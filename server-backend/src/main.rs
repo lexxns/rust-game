@@ -51,20 +51,16 @@ async fn main() {
                     let msg_tx = Arc::new(msg_tx);
 
                     // Add player to room management
-                    let room_rx = {
+                    let mut room_rx = {
                         let mut manager = room_manager.write().await;
                         manager.add_player(addr, msg_tx.clone()).await
                     };
-                    let room_rx = if room_rx.is_none() {
+                    if room_rx.is_none() {
                         let manager = room_manager.read().await;
                         if let Some(broadcaster) = manager.get_room_broadcast(addr) {
-                            Some(broadcaster.subscribe())
-                        } else {
-                            None
+                            room_rx = Some(broadcaster.subscribe());
                         }
-                    } else {
-                        room_rx
-                    };
+                    }
 
                     // Task for sending messages to WebSocket
                     let sender_task = tokio::spawn(async move {
@@ -78,17 +74,15 @@ async fn main() {
 
                     // Task for handling room messages
                     let msg_tx_clone = msg_tx.clone();
-                    let room_task = if let Some(mut rx) = room_rx {
-                        Some(tokio::spawn(async move {
+                    let room_task = room_rx.map(|mut rx| {
+                        tokio::spawn(async move {
                             while let Ok(msg) = rx.recv().await {
                                 if msg_tx_clone.send(msg).await.is_err() {
                                     break;
                                 }
                             }
-                        }))
-                    } else {
-                        None
-                    };
+                        })
+                    });
 
                     // Handle incoming messages
                     while let Some(Ok(msg)) = ws_receiver.next().await {

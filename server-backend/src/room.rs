@@ -106,7 +106,17 @@ impl RoomManager {
 
     pub async fn add_player(&mut self, addr: SocketAddr, sender: Arc<mpsc::Sender<Message>>) -> Option<broadcast::Receiver<Message>> {
         println!("Adding player: {}", addr);
-        self.waiting_players.push((addr, sender.clone()));
+
+        // First check if player is already in a room and return a new subscription
+        if let Some(broadcaster) = self.get_room_broadcast(addr) {
+            println!("Player {} already in room, returning new subscription", addr);
+            return Some(broadcaster.subscribe());
+        }
+
+        // Add to waiting players if not already waiting
+        if !self.waiting_players.iter().any(|(a, _)| *a == addr) {
+            self.waiting_players.push((addr, sender.clone()));
+        }
 
         if self.waiting_players.len() >= 2 {
             println!("Creating new room with 2 players");
@@ -128,7 +138,7 @@ impl RoomManager {
 
             self.active_rooms.insert(room_id, room);
 
-            // Notify players they've been matched
+            // Notify players they've been matched and return a receiver for the current player
             for (player_addr, player_sender) in &players_to_notify {
                 println!("Sending match notification to player {}", player_addr);
                 let _ = player_sender.send(Message::text(format!(
@@ -137,17 +147,12 @@ impl RoomManager {
                 ))).await;
             }
 
-            // Return a receiver for both players
+            // Always return a new subscription for the requesting player
             Some(room_tx.subscribe())
         } else {
             println!("Player {} waiting for match", addr);
             let _ = sender.send(Message::text("Waiting for another player...")).await;
-            // Check if player is already in a room (might happen during reconnect)
-            if let Some(broadcaster) = self.get_room_broadcast(addr) {
-                Some(broadcaster.subscribe())
-            } else {
-                None
-            }
+            None
         }
     }
 }
