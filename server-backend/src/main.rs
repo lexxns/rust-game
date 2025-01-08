@@ -1,8 +1,11 @@
+mod room;
+
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
+use room::RoomManager;
 
 async fn handle_command(msg: &str) -> Option<Message> {
     match msg.trim() {
@@ -33,10 +36,10 @@ async fn main() {
 
     println!("WebSocket server listening on: {}", addr);
 
-    while let Ok((stream, addr)) = listener.accept().await {
-        let broadcast_tx = broadcast_tx.clone();
-        let mut broadcast_rx = broadcast_tx.subscribe();
+    let room_manager = RoomManager::new();
 
+    while let Ok((stream, addr)) = listener.accept().await {
+        let room_manager = room_manager.clone();
         tokio::spawn(async move {
             match accept_async(stream).await {
                 Ok(ws_stream) => {
@@ -47,11 +50,21 @@ async fn main() {
                     let (msg_tx, mut msg_rx) = mpsc::channel::<Message>(100);
                     let msg_tx = Arc::new(msg_tx);
 
-                    // Send welcome message
-                    let msg_tx_clone = msg_tx.clone();
-                    msg_tx_clone.send(Message::text("Welcome! Type /help for available commands."))
-                        .await
-                        .expect("Failed to send welcome message");
+                    // Add player to room management
+                    let room_rx = {
+                        let mut manager = room_manager.write().await;
+                        manager.add_player(addr, msg_tx.clone()).await
+                    };
+                    let room_rx = if room_rx.is_none() {
+                        let manager = room_manager.read().await;
+                        if let Some(broadcaster) = manager.get_room_broadcast(addr) {
+                            Some(broadcaster.subscribe())
+                        } else {
+                            None
+                        }
+                    } else {
+                        room_rx
+                    };
 
                     // Task for sending messages to WebSocket
                     let sender_task = tokio::spawn(async move {
@@ -62,17 +75,22 @@ async fn main() {
                         }
                     });
 
-                    // Task for handling broadcast messages
-                    let msg_tx_clone = msg_tx.clone();
-                    let broadcast_task = tokio::spawn(async move {
-                        while let Ok(msg) = broadcast_rx.recv().await {
-                            if msg_tx_clone.send(msg).await.is_err() {
-                                break;
-                            }
-                        }
-                    });
 
-                    // Handle incoming messages from the WebSocket
+                    // Task for handling room messages
+                    let msg_tx_clone = msg_tx.clone();
+                    let room_task = if let Some(mut rx) = room_rx {
+                        Some(tokio::spawn(async move {
+                            while let Ok(msg) = rx.recv().await {
+                                if msg_tx_clone.send(msg).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }))
+                    } else {
+                        None
+                    };
+
+                    // Handle incoming messages
                     while let Some(Ok(msg)) = ws_receiver.next().await {
                         match msg {
                             Message::Text(text) => {
@@ -80,15 +98,14 @@ async fn main() {
 
                                 // Handle commands
                                 if let Some(response) = handle_command(&text).await {
-                                    // Send command response only to this client
                                     if msg_tx.send(response).await.is_err() {
                                         break;
                                     }
                                 } else {
-                                    // Broadcast regular messages to all clients
-                                    let broadcast_msg = Message::text(format!("{}: {}", addr, text));
-                                    if broadcast_tx.send(broadcast_msg).is_err() {
-                                        break;
+                                    // Send message to room if player is in one
+                                    let manager = room_manager.read().await;
+                                    if !manager.broadcast_to_room(addr, text.parse().unwrap()).await {
+                                        println!("Failed to broadcast message for {}", addr);
                                     }
                                 }
                             }
@@ -96,13 +113,22 @@ async fn main() {
                                 println!("Client disconnected: {}", addr);
                                 break;
                             }
-                            _ => {} // Ignore other message types
+                            _ => {}
                         }
                     }
 
-                    // Clean up tasks
+                    // Clean up
                     sender_task.abort();
-                    broadcast_task.abort();
+                    if let Some(task) = room_task {
+                        task.abort();
+                    }
+
+                    // Remove player from room management
+                    {
+                        let mut manager = room_manager.write().await;
+                        manager.remove_player(addr);
+                    }
+
                     println!("Connection closed: {}", addr);
                 }
                 Err(e) => println!("Error during WebSocket handshake: {}", e),
