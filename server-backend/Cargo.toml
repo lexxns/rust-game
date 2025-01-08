@@ -1,0 +1,11 @@
+[package]
+name = "server-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.43.0", features = ["full"] }
+tokio-tungstenite = "*"
+futures-util = "0.3.31"
+chrono = "0.4.39"
+shared = { path = "../shared" }

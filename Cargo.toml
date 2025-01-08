@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "shared",
+    "server-backend",
+    "server-frontend",
+]
+
+#[package]
+#name = "cardserver"
+#version = "0.0.1"
+#resolver = "2"
