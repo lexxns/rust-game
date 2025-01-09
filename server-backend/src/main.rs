@@ -64,11 +64,7 @@ async fn handle_connection(
     // Clean up when player disconnects
     {
         let mut state = state.write().await;
-        if let Some(other_player_id) = state.handle_disconnect(&player_id) {
-            if let Some(other_sender) = state.get_player_sender(&other_player_id) {
-                let _ = other_sender.send(Message::Text(Utf8Bytes::from("Your partner has disconnected")));
-            }
-        }
+        state.handle_disconnect(&player_id);
     }
 }
 

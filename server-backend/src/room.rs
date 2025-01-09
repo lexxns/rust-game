@@ -1,5 +1,5 @@
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -80,10 +80,9 @@ impl RoomManager {
         Some((*room_id, other_player_id))
     }
 
-    // Handle player disconnect
-    pub fn handle_disconnect(&mut self, player_id: &Uuid) -> Option<Uuid> {
+    // Handle player disconnect and notify other player if needed
+    pub fn handle_disconnect(&mut self, player_id: &Uuid) {
         self.waiting_players.retain(|p| p.id != *player_id);
-        self.player_senders.remove(player_id);
 
         if let Some(room_id) = self.player_to_room.remove(player_id) {
             if let Some(room) = self.rooms.remove(&room_id) {
@@ -93,9 +92,14 @@ impl RoomManager {
                     room.player1
                 };
                 self.player_to_room.remove(&other_player_id);
-                return Some(other_player_id);
+
+                // Notify other player about disconnect
+                if let Some(other_sender) = self.player_senders.get(&other_player_id) {
+                    let _ = other_sender.send(Message::Text(Utf8Bytes::from("Your partner has disconnected")));
+                }
             }
         }
-        None
+
+        self.player_senders.remove(player_id);
     }
 }
