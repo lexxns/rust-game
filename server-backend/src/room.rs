@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use uuid::Uuid;
-use shared::message_utils::{CommsMessage, PlayerMessage};
 use shared::message_utils::PlayerConnection;
+use crate::messages::{CommsMessage, PlayerMessage};
 
 // Represents a connected player
+#[derive(Clone)]
 pub struct Player {
     pub id: Uuid,
     pub name: String,
-    pub sender: PlayerConnection,
+    pub connection: PlayerConnection,
 }
 
 impl Player {
@@ -15,7 +16,7 @@ impl Player {
         Self {
             id: Uuid::new_v4(),
             name,
-            sender,
+            connection: sender,
         }
     }
 }
@@ -26,24 +27,13 @@ pub struct Room {
     pub player2: Uuid,
 }
 
-pub struct ConnectionsView<'a>(&'a HashMap<Uuid, PlayerConnection>);
-
-use std::ops::Deref;
-
-impl<'a> Deref for ConnectionsView<'a> {
-    type Target = HashMap<Uuid, PlayerConnection>;
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
 // Global state management for rooms
 pub struct RoomManager {
     waiting_players: Vec<Player>,
     rooms: HashMap<Uuid, Room>,
     player_to_room: HashMap<Uuid, Uuid>,
     player_connections: HashMap<Uuid, PlayerConnection>,
+    online_players: Vec<Player>,
 }
 
 impl RoomManager {
@@ -53,16 +43,27 @@ impl RoomManager {
             rooms: HashMap::new(),
             player_to_room: HashMap::new(),
             player_connections: HashMap::new(),
+            online_players: Vec::new(),
         }
     }
 
-    pub fn connections(&self) -> ConnectionsView<'_> {
-        ConnectionsView(&self.player_connections)
+    pub fn players(&self) -> &Vec<Player> {
+        &self.online_players
+    }
+
+    pub fn player_connections(&self) -> &HashMap<Uuid, PlayerConnection> {
+        &self.player_connections
+    }
+
+    pub fn get_player_id(&self, name: String) -> Option<Uuid> {
+        let res = self.online_players.iter().find(|&p| p.name == name);
+        res.map(|p| p.id)
     }
 
     // Add a player to the waiting list
     pub fn add_waiting_player(&mut self, player: Player) {
-        self.player_connections.insert(player.id, player.sender.clone());
+        let player_copy = player.clone();
+        self.online_players.push(player_copy);
         self.waiting_players.push(player);
     }
 
@@ -89,8 +90,9 @@ impl RoomManager {
     }
 
     // Get sender for a specific player
-    pub fn get_player_sender(&self, player_id: &Uuid) -> Option<&PlayerConnection> {
-        self.player_connections.get(player_id)
+    pub fn get_player_sender(&self, player_id: &Uuid) -> Option<PlayerConnection> {
+        let res = self.online_players.iter().find(|&p| p.id == *player_id);
+        res.map(|p| p.connection.clone())
     }
 
     // Get room and other player info for a given player
@@ -121,11 +123,9 @@ impl RoomManager {
                 self.player_to_room.remove(&other_player_id);
 
                 // Notify other player about disconnect
-                let disconnect_msg = PlayerMessage::player_disconnected(other_player_id);
-                disconnect_msg.send(&self.player_connections);
+                PlayerMessage::player_disconnected(other_player_id).send(&self.player_connections);
             }
         }
-
-        self.player_connections.remove(player_id);
+        self.online_players.retain(|p| p.id != *player_id);
     }
 }

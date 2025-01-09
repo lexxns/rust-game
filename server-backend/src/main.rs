@@ -7,7 +7,8 @@ mod messages;
 
 use room::{RoomManager, Player};
 use messages::{handle_incoming_message};
-use shared::message_utils::{parse_incoming_message, CommsMessage, MessageType, PlayerMessage};
+use shared::message_utils::{MessageType};
+use crate::messages::{parse_incoming_message, CommsMessage, PlayerMessage};
 
 async fn handle_connection(
     ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
@@ -45,15 +46,13 @@ async fn handle_connection(
     let player = Player::new(player_name, message_tx.clone());
     let player_id = player.id;
 
-    // Add player to waiting list
-    {
-        let mut room_manager = state.write().await;
-        room_manager.add_waiting_player(player);
+    let mut room_manager = state.write().await;
+    room_manager.add_waiting_player(player);
 
-        // Try to create a room if possible
-        if let Some((player1_id, player2_id)) = room_manager.try_create_room() {
-            PlayerMessage::player_matched(player1_id, player2_id).send(&room_manager.connections())
-        }
+    // Add players to a room if possible
+    if let Some((player_id, room_id)) = room_manager.try_create_room() {
+        PlayerMessage::player_matched(player_id, room_id)
+            .send(room_manager.player_connections());
     }
 
     // Spawn task to forward messages from other players to this client
@@ -75,7 +74,7 @@ async fn handle_connection(
                         handle_incoming_message(incoming_msg, player_id, &room_manager);
                     },
                     Err(e) => {
-                        PlayerMessage::system("Unable to Parse Message", player_id).send(&room_manager.connections())
+                        PlayerMessage::system("Unable to Parse Message", player_id).send(&room_manager.player_connections())
                     }
                 }
             }
