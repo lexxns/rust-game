@@ -1,132 +1,163 @@
-mod room;
-
-use futures_util::{SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
+use tokio::sync::{mpsc, RwLock};
+use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio::sync::{broadcast, mpsc};
-use tokio_tungstenite::{accept_async, tungstenite::Message};
-use room::RoomManager;
+use uuid::Uuid;
 
-async fn handle_command(msg: &str) -> Option<Message> {
-    match msg.trim() {
-        "/help" => Some(Message::text(
-            "Available commands:\n\
-             /help - Show this help message\n\
-             /time - Show current time\n\
-             /users - Show number of connected users"
-        )),
-        "/time" => {
-            let time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            Some(Message::text(format!("Current server time: {}", time)))
+// Represents a connected player
+struct Player {
+    id: Uuid,
+    sender: mpsc::UnboundedSender<Message>,
+}
+
+// Represents a private room with two players
+struct Room {
+    player1: Uuid,
+    player2: Uuid,
+}
+
+// Global state management
+struct ServerState {
+    waiting_players: Vec<Player>,
+    rooms: HashMap<Uuid, Room>,
+    player_to_room: HashMap<Uuid, Uuid>,
+    player_senders: HashMap<Uuid, mpsc::UnboundedSender<Message>>,
+}
+
+impl ServerState {
+    fn new() -> Self {
+        Self {
+            waiting_players: Vec::new(),
+            rooms: HashMap::new(),
+            player_to_room: HashMap::new(),
+            player_senders: HashMap::new(),
         }
-        msg if msg.starts_with('/') => {
-            Some(Message::text("Unknown command. Type /help for available commands."))
+    }
+
+    // Try to match players and create a room
+    fn try_create_room(&mut self) -> Option<(Uuid, Uuid)> {
+        if self.waiting_players.len() >= 2 {
+            let player2 = self.waiting_players.pop()?;
+            let player1 = self.waiting_players.pop()?;
+
+            let room_id = Uuid::new_v4();
+            let room = Room {
+                player1: player1.id,
+                player2: player2.id,
+            };
+
+            self.rooms.insert(room_id, room);
+            self.player_to_room.insert(player1.id, room_id);
+            self.player_to_room.insert(player2.id, room_id);
+
+            Some((player1.id, player2.id))
+        } else {
+            None
         }
-        _ => None
+    }
+}
+
+async fn handle_connection(
+    ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    state: Arc<RwLock<ServerState>>,
+) {
+    let player_id = Uuid::new_v4();
+    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+    let (message_tx, mut message_rx) = mpsc::unbounded_channel();
+
+    // First, store the sender in the state
+    {
+        let mut state = state.write().await;
+        state.player_senders.insert(player_id, message_tx.clone());
+        state.waiting_players.push(Player {
+            id: player_id,
+            sender: message_tx,
+        });
+
+        // Try to create a room if possible
+        if let Some((player1_id, player2_id)) = state.try_create_room() {
+            // Notify both players they've been matched
+            let match_msg = Message::Text(Utf8Bytes::from("Matched with player!"));
+            if let Some(sender1) = state.player_senders.get(&player1_id) {
+                let _ = sender1.send(match_msg.clone());
+            }
+            if let Some(sender2) = state.player_senders.get(&player2_id) {
+                let _ = sender2.send(match_msg);
+            }
+        }
+    }
+
+    // Handle outgoing messages
+    tokio::spawn(async move {
+        while let Some(msg) = message_rx.recv().await {
+            if ws_sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Handle incoming messages
+    while let Some(result) = ws_receiver.next().await {
+        match result {
+            Ok(msg) => {
+                let state = state.read().await;
+                if let Some(room_id) = state.player_to_room.get(&player_id) {
+                    if let Some(room) = state.rooms.get(room_id) {
+                        let other_player_id = if room.player1 == player_id {
+                            room.player2
+                        } else {
+                            room.player1
+                        };
+
+                        if let Some(other_sender) = state.player_senders.get(&other_player_id) {
+                            let _ = other_sender.send(msg);
+                        }
+                    }
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    // Clean up when player disconnects
+    {
+        let mut state = state.write().await;
+        state.waiting_players.retain(|p| p.id != player_id);
+        state.player_senders.remove(&player_id);
+
+        if let Some(room_id) = state.player_to_room.remove(&player_id) {
+            if let Some(room) = state.rooms.remove(&room_id) {
+                let other_player_id = if room.player1 == player_id {
+                    room.player2
+                } else {
+                    room.player1
+                };
+                state.player_to_room.remove(&other_player_id);
+
+                if let Some(other_sender) = state.player_senders.get(&other_player_id) {
+                    let _ = other_sender.send(Message::Text(Utf8Bytes::from("Your partner has disconnected")));
+                }
+            }
+        }
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let addr = "127.0.0.1:8000";
-    let listener = TcpListener::bind(addr).await.expect("Failed to bind");
-
-    let (broadcast_tx, _) = broadcast::channel::<Message>(100);
-    let broadcast_tx = Arc::new(broadcast_tx);
-
+    let state = Arc::new(RwLock::new(ServerState::new()));
+    let addr = "127.0.0.1:8080";
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     println!("WebSocket server listening on: {}", addr);
 
-    let room_manager = RoomManager::new();
+    while let Ok((stream, _)) = listener.accept().await {
+        let ws_stream = tokio_tungstenite::accept_async(stream)
+            .await
+            .expect("Error during WebSocket handshake");
 
-    while let Ok((stream, addr)) = listener.accept().await {
-        let room_manager = room_manager.clone();
+        let state = Arc::clone(&state);
         tokio::spawn(async move {
-            match accept_async(stream).await {
-                Ok(ws_stream) => {
-                    println!("Client connected: {}", addr);
-                    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-
-                    // Create a channel for sending messages to the WebSocket
-                    let (msg_tx, mut msg_rx) = mpsc::channel::<Message>(100);
-                    let msg_tx = Arc::new(msg_tx);
-
-                    // Add player to room management
-                    let mut room_rx = {
-                        let mut manager = room_manager.write().await;
-                        manager.add_player(addr, msg_tx.clone()).await
-                    };
-                    if room_rx.is_none() {
-                        let manager = room_manager.read().await;
-                        if let Some(broadcaster) = manager.get_room_broadcast(addr) {
-                            room_rx = Some(broadcaster.subscribe());
-                        }
-                    }
-
-                    // Task for sending messages to WebSocket
-                    let sender_task = tokio::spawn(async move {
-                        while let Some(message) = msg_rx.recv().await {
-                            if ws_sender.send(message).await.is_err() {
-                                break;
-                            }
-                        }
-                    });
-
-
-                    // Task for handling room messages
-                    let msg_tx_clone = msg_tx.clone();
-                    let room_task = room_rx.map(|mut rx| {
-                        tokio::spawn(async move {
-                            while let Ok(msg) = rx.recv().await {
-                                if msg_tx_clone.send(msg).await.is_err() {
-                                    break;
-                                }
-                            }
-                        })
-                    });
-
-                    // Handle incoming messages
-                    while let Some(Ok(msg)) = ws_receiver.next().await {
-                        match msg {
-                            Message::Text(text) => {
-                                println!("Received from {}: {}", addr, text);
-
-                                // Handle commands
-                                if let Some(response) = handle_command(&text).await {
-                                    if msg_tx.send(response).await.is_err() {
-                                        break;
-                                    }
-                                } else {
-                                    // Send message to room if player is in one
-                                    let manager = room_manager.read().await;
-                                    if !manager.broadcast_to_room(addr, text.parse().unwrap()).await {
-                                        println!("Failed to broadcast message for {}", addr);
-                                    }
-                                }
-                            }
-                            Message::Close(_) => {
-                                println!("Client disconnected: {}", addr);
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Clean up
-                    sender_task.abort();
-                    if let Some(task) = room_task {
-                        task.abort();
-                    }
-
-                    // Remove player from room management
-                    {
-                        let mut manager = room_manager.write().await;
-                        manager.remove_player(addr);
-                    }
-
-                    println!("Connection closed: {}", addr);
-                }
-                Err(e) => println!("Error during WebSocket handshake: {}", e),
-            }
+            handle_connection(ws_stream, state).await;
         });
     }
 }

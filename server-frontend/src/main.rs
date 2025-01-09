@@ -5,7 +5,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[tokio::main]
 async fn main() {
-    let url = "ws://127.0.0.1:8000";
+    let url = "ws://127.0.0.1:8080";
     let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
     println!("WebSocket connected");
 
