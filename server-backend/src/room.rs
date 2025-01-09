@@ -1,12 +1,12 @@
-use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use std::collections::HashMap;
 use uuid::Uuid;
+use shared::messages::{CommsMessage, RoomMessage};
+use shared::core::PlayerConnection;
 
 // Represents a connected player
 pub struct Player {
     pub id: Uuid,
-    pub sender: mpsc::UnboundedSender<Message>,
+    pub sender: PlayerConnection,
 }
 
 // Represents a private room with two players
@@ -20,7 +20,7 @@ pub struct RoomManager {
     waiting_players: Vec<Player>,
     rooms: HashMap<Uuid, Room>,
     player_to_room: HashMap<Uuid, Uuid>,
-    player_senders: HashMap<Uuid, mpsc::UnboundedSender<Message>>,
+    pub(crate) player_senders: HashMap<Uuid, PlayerConnection>,
 }
 
 impl RoomManager {
@@ -62,7 +62,7 @@ impl RoomManager {
     }
 
     // Get sender for a specific player
-    pub fn get_player_sender(&self, player_id: &Uuid) -> Option<&mpsc::UnboundedSender<Message>> {
+    pub fn get_player_sender(&self, player_id: &Uuid) -> Option<&PlayerConnection> {
         self.player_senders.get(player_id)
     }
 
@@ -94,9 +94,8 @@ impl RoomManager {
                 self.player_to_room.remove(&other_player_id);
 
                 // Notify other player about disconnect
-                if let Some(other_sender) = self.player_senders.get(&other_player_id) {
-                    let _ = other_sender.send(Message::Text(Utf8Bytes::from("Your partner has disconnected")));
-                }
+                let disconnect_msg = RoomMessage::player_disconnected(other_player_id);
+                disconnect_msg.send(&self.player_senders);
             }
         }
 

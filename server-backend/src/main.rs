@@ -4,9 +4,11 @@ use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use std::sync::Arc;
 use uuid::Uuid;
 use tokio::sync::mpsc;
+use std::collections::HashSet;
 
 mod room;
 use room::{RoomManager, Player};
+use shared::messages::{handle_incoming_message, parse_incoming_message, CommsMessage, RoomMessage};
 
 async fn handle_connection(
     ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
@@ -51,9 +53,34 @@ async fn handle_connection(
         match result {
             Ok(msg) => {
                 let state = state.read().await;
-                if let Some((_, other_player_id)) = state.get_room_info(&player_id) {
-                    if let Some(other_sender) = state.get_player_sender(&other_player_id) {
-                        let _ = other_sender.send(msg);
+
+                // Parse the incoming message
+                match parse_incoming_message(msg) {
+                    Ok(incoming_msg) => {
+                        // Get room members if the player is in a room
+                        let room_members = state
+                            .get_room_info(&player_id)
+                            .map(|(_, other_player_id)| {
+                                let mut members = HashSet::new();
+                                members.insert(other_player_id);
+                                members
+                            });
+
+                        // Convert to appropriate CommsMessage type and send
+                        let comms_msg = handle_incoming_message(incoming_msg, player_id, room_members);
+                        comms_msg.send(&state.player_senders);
+                    }
+                    Err(e) => {
+                        // Send error message back to sender
+                        let mut self_target = HashSet::new();
+                        self_target.insert(player_id);
+                        let error_msg = RoomMessage::new(
+                            format!("Invalid message format: {}", e),
+                            Uuid::nil(),
+                            self_target
+                        );
+                        let msg: &dyn CommsMessage = &error_msg;
+                        msg.send(&state.player_senders);
                     }
                 }
             }
