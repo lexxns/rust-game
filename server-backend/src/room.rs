@@ -1,12 +1,23 @@
 use std::collections::HashMap;
 use uuid::Uuid;
-use shared::messages::{CommsMessage, RoomMessage};
-use shared::core::PlayerConnection;
+use shared::message_utils::{CommsMessage, PlayerMessage};
+use shared::message_utils::PlayerConnection;
 
 // Represents a connected player
 pub struct Player {
     pub id: Uuid,
+    pub name: String,
     pub sender: PlayerConnection,
+}
+
+impl Player {
+    pub fn new(name: String, sender: PlayerConnection) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            sender,
+        }
+    }
 }
 
 // Represents a private room with two players
@@ -15,12 +26,24 @@ pub struct Room {
     pub player2: Uuid,
 }
 
+pub struct ConnectionsView<'a>(&'a HashMap<Uuid, PlayerConnection>);
+
+use std::ops::Deref;
+
+impl<'a> Deref for ConnectionsView<'a> {
+    type Target = HashMap<Uuid, PlayerConnection>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
 // Global state management for rooms
 pub struct RoomManager {
     waiting_players: Vec<Player>,
     rooms: HashMap<Uuid, Room>,
     player_to_room: HashMap<Uuid, Uuid>,
-    pub(crate) player_senders: HashMap<Uuid, PlayerConnection>,
+    player_connections: HashMap<Uuid, PlayerConnection>,
 }
 
 impl RoomManager {
@@ -29,13 +52,17 @@ impl RoomManager {
             waiting_players: Vec::new(),
             rooms: HashMap::new(),
             player_to_room: HashMap::new(),
-            player_senders: HashMap::new(),
+            player_connections: HashMap::new(),
         }
+    }
+
+    pub fn connections(&self) -> ConnectionsView<'_> {
+        ConnectionsView(&self.player_connections)
     }
 
     // Add a player to the waiting list
     pub fn add_waiting_player(&mut self, player: Player) {
-        self.player_senders.insert(player.id, player.sender.clone());
+        self.player_connections.insert(player.id, player.sender.clone());
         self.waiting_players.push(player);
     }
 
@@ -63,7 +90,7 @@ impl RoomManager {
 
     // Get sender for a specific player
     pub fn get_player_sender(&self, player_id: &Uuid) -> Option<&PlayerConnection> {
-        self.player_senders.get(player_id)
+        self.player_connections.get(player_id)
     }
 
     // Get room and other player info for a given player
@@ -94,11 +121,11 @@ impl RoomManager {
                 self.player_to_room.remove(&other_player_id);
 
                 // Notify other player about disconnect
-                let disconnect_msg = RoomMessage::player_disconnected(other_player_id);
-                disconnect_msg.send(&self.player_senders);
+                let disconnect_msg = PlayerMessage::player_disconnected(other_player_id);
+                disconnect_msg.send(&self.player_connections);
             }
         }
 
-        self.player_senders.remove(player_id);
+        self.player_connections.remove(player_id);
     }
 }

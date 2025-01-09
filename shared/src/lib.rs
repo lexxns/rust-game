@@ -1,5 +1,4 @@
-pub mod messages;
-pub mod core;
+pub mod message_utils;
 
 pub mod models {
     use serde::{Deserialize, Serialize};

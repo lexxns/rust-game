@@ -1,46 +1,63 @@
 use futures::{SinkExt, StreamExt};
-use tokio::sync::RwLock;
-use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
+use tokio::sync::{mpsc, RwLock};
+use tokio_tungstenite::tungstenite::{Message as WsMessage, Utf8Bytes};
 use std::sync::Arc;
-use uuid::Uuid;
-use tokio::sync::mpsc;
-use std::collections::HashSet;
-
 mod room;
+mod messages;
+
 use room::{RoomManager, Player};
-use shared::messages::{handle_incoming_message, parse_incoming_message, CommsMessage, RoomMessage};
+use messages::{handle_incoming_message};
+use shared::message_utils::{parse_incoming_message, CommsMessage, MessageType, PlayerMessage};
 
 async fn handle_connection(
     ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
     state: Arc<RwLock<RoomManager>>,
 ) {
-    let player_id = Uuid::new_v4();
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+    // First message must be a Connect message with the player's name
+    let connect_msg = match ws_receiver.next().await {
+        Some(Ok(msg)) => match parse_incoming_message(msg) {
+            Ok(incoming) => match incoming.message_type {
+                MessageType::Connect { name } => Ok(name),
+                _ => Err("First message must be a Connect message with your name")
+            },
+            Err(e) => Err("Failed to parse connect message: {}")
+        },
+        Some(Err(e)) => Err("WebSocket error"),
+        None => Err("Connection closed before receiving connect message")
+    };
+
+    // Handle connection errors by sending error message and returning
+    let player_name = match connect_msg {
+        Ok(name) => name,
+        Err(e) => {
+            let error_msg = WsMessage::Text(Utf8Bytes::from(e));
+            let _ = ws_sender.send(error_msg).await;
+            return;
+        }
+    };
+
+    // Set up message channel for this player
     let (message_tx, mut message_rx) = mpsc::unbounded_channel();
+
+    // Create and register the new player
+    let player = Player::new(player_name, message_tx.clone());
+    let player_id = player.id;
 
     // Add player to waiting list
     {
-        let mut state = state.write().await;
-        state.add_waiting_player(Player {
-            id: player_id,
-            sender: message_tx.clone(),
-        });
+        let mut room_manager = state.write().await;
+        room_manager.add_waiting_player(player);
 
         // Try to create a room if possible
-        if let Some((player1_id, player2_id)) = state.try_create_room() {
-            // Notify both players they've been matched
-            let match_msg = Message::Text(Utf8Bytes::from("Matched with player!"));
-            if let Some(sender1) = state.get_player_sender(&player1_id) {
-                let _ = sender1.send(match_msg.clone());
-            }
-            if let Some(sender2) = state.get_player_sender(&player2_id) {
-                let _ = sender2.send(match_msg);
-            }
+        if let Some((player1_id, player2_id)) = room_manager.try_create_room() {
+            PlayerMessage::player_matched(player1_id, player2_id).send(&room_manager.connections())
         }
     }
 
-    // Handle outgoing messages
-    tokio::spawn(async move {
+    // Spawn task to forward messages from other players to this client
+    let forward_task = tokio::spawn(async move {
         while let Some(msg) = message_rx.recv().await {
             if ws_sender.send(msg).await.is_err() {
                 break;
@@ -48,39 +65,17 @@ async fn handle_connection(
         }
     });
 
-    // Handle incoming messages
+    // Main message handling loop
     while let Some(result) = ws_receiver.next().await {
         match result {
             Ok(msg) => {
-                let state = state.read().await;
-
-                // Parse the incoming message
+                let room_manager = state.read().await;
                 match parse_incoming_message(msg) {
                     Ok(incoming_msg) => {
-                        // Get room members if the player is in a room
-                        let room_members = state
-                            .get_room_info(&player_id)
-                            .map(|(_, other_player_id)| {
-                                let mut members = HashSet::new();
-                                members.insert(other_player_id);
-                                members
-                            });
-
-                        // Convert to appropriate CommsMessage type and send
-                        let comms_msg = handle_incoming_message(incoming_msg, player_id, room_members);
-                        comms_msg.send(&state.player_senders);
-                    }
+                        handle_incoming_message(incoming_msg, player_id, &room_manager);
+                    },
                     Err(e) => {
-                        // Send error message back to sender
-                        let mut self_target = HashSet::new();
-                        self_target.insert(player_id);
-                        let error_msg = RoomMessage::new(
-                            format!("Invalid message format: {}", e),
-                            Uuid::nil(),
-                            self_target
-                        );
-                        let msg: &dyn CommsMessage = &error_msg;
-                        msg.send(&state.player_senders);
+                        PlayerMessage::system("Unable to Parse Message", player_id).send(&room_manager.connections())
                     }
                 }
             }
@@ -88,11 +83,10 @@ async fn handle_connection(
         }
     }
 
-    // Clean up when player disconnects
-    {
-        let mut state = state.write().await;
-        state.handle_disconnect(&player_id);
-    }
+    // Clean up when the connection ends
+    forward_task.abort();
+    let mut state = state.write().await;
+    state.handle_disconnect(&player_id);
 }
 
 #[tokio::main]

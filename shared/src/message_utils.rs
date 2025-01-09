@@ -15,13 +15,14 @@ pub enum MessageType {
     Room(String),
     Private { recipient: Uuid, content: String },
     System(String),
+    Connect { name: String },
 }
 
 // The structured format of messages coming from clients
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IncomingMessage {
     #[serde(flatten)]
-    message_type: MessageType,
+    pub message_type: MessageType,
 }
 
 pub trait CommsMessage {
@@ -38,18 +39,47 @@ pub trait CommsMessage {
     }
 }
 
-pub struct RoomMessage {
+pub struct PlayerMessage {
     content: Utf8Bytes,
     originator: Uuid,
     target_players: HashSet<Uuid>,
 }
 
-impl RoomMessage {
+impl PlayerMessage {
     pub fn new(content: impl Into<Utf8Bytes>, from: Uuid, to: impl Into<HashSet<Uuid>>) -> Self {
         Self {
             content: content.into(),
             originator: from,
             target_players: to.into(),
+        }
+    }
+
+    // Factory methods for specific message types
+    pub fn system(content: impl Into<Utf8Bytes>, to: Uuid) -> Self {
+        let mut targets = HashSet::new();
+        targets.insert(to);
+        Self {
+            content: content.into(),
+            originator: Uuid::nil(),
+            target_players: targets,
+        }
+    }
+
+    pub fn room_broadcast(content: impl Into<Utf8Bytes>, from: Uuid, room_members: impl Into<HashSet<Uuid>>) -> Self {
+        Self {
+            content: content.into(),
+            originator: from,
+            target_players: room_members.into(),
+        }
+    }
+
+    pub fn private(content: impl Into<Utf8Bytes>, from: Uuid, to: Uuid) -> Self {
+        let mut targets = HashSet::new();
+        targets.insert(to);
+        Self {
+            content: content.into(),
+            originator: from,
+            target_players: targets,
         }
     }
 
@@ -75,7 +105,7 @@ impl RoomMessage {
     }
 }
 
-impl CommsMessage for RoomMessage {
+impl CommsMessage for PlayerMessage {
     fn text(&self) -> &Utf8Bytes {
         &self.content
     }
@@ -137,37 +167,5 @@ pub fn parse_incoming_message(msg: WsMessage) -> Result<IncomingMessage, serde_j
             serde_json::from_str(content.as_ref())
         },
         _ => Err(serde_json::Error::custom("Unsupported message type")),
-    }
-}
-
-// Convert incoming messages to appropriate CommsMessage implementations
-pub fn handle_incoming_message(
-    msg: IncomingMessage,
-    sender_id: Uuid,
-    room_members: Option<HashSet<Uuid>>,
-) -> Box<dyn CommsMessage> {
-    match msg.message_type {
-        MessageType::Room(content) => {
-            if let Some(members) = room_members {
-                Box::new(RoomMessage::new(content, sender_id, members))
-            } else {
-                // If not in a room, treat as system message to self
-                let mut self_target = HashSet::new();
-                self_target.insert(sender_id);
-                Box::new(RoomMessage::new(
-                    "You are not in a room".to_string(),
-                    Uuid::nil(),
-                    self_target
-                ))
-            }
-        },
-        MessageType::Private { recipient, content } => {
-            Box::new(PrivateMessage::new(content, sender_id, recipient))
-        },
-        MessageType::System(content) => {
-            let mut self_target = HashSet::new();
-            self_target.insert(sender_id);
-            Box::new(RoomMessage::new(content, Uuid::nil(), self_target))
-        }
     }
 }
