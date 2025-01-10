@@ -1,5 +1,5 @@
 use futures::{SinkExt, StreamExt};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_tungstenite::tungstenite::{Message as WsMessage, Utf8Bytes};
 use std::sync::Arc;
 use std::collections::{HashMap, HashSet};
@@ -27,12 +27,11 @@ impl ConnectionHandler {
 
         match (&incoming.message_type, player_id) {
             (MessageType::Connect { name }, None) => {
-                // Handle initial connection
-                let (message_tx, _) = mpsc::unbounded_channel();
-                let player = Player::new(name.to_string(), message_tx);
-                let new_player_id = player.id;
-
                 let mut room_manager = self.state.write().await;
+
+                // Create and add the player
+                let (message_tx, _) = mpsc::unbounded_channel();
+                let player = Player::new(name.to_string(), PlayerConnection::from(message_tx));
                 room_manager.add_waiting_player(player);
 
                 // Try to create a room
@@ -85,7 +84,6 @@ impl ConnectionHandler {
     }
 }
 
-// Main WebSocket connection handler
 pub async fn handle_connection(
     ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
     state: Arc<RwLock<RoomManager>>,
@@ -100,47 +98,43 @@ pub async fn handle_connection(
             Ok(incoming) => {
                 match &incoming.message_type {
                     MessageType::Connect { name } => {
-                        let name = name.clone(); // Clone the name before moving incoming
-                        let responses = handler.handle_message(incoming, None).await;
-                        for response in responses {
-                            if ws_sender.send(response).await.is_err() {
-                                return;
+                        let name = name.clone();
+                        // Create message channel that forwards to this websocket
+                        let (tx, mut rx) = mpsc::unbounded_channel();
+
+                        // Spawn task to forward messages from rx to WebSocket
+                        let mut ws_sender = ws_sender;
+                        tokio::spawn(async move {
+                            while let Some(msg) = rx.recv().await {
+                                if ws_sender.send(msg).await.is_err() {
+                                    break;
+                                }
                             }
+                        });
+
+                        // Create player with the sender
+                        let player = Player::new(name.clone(), PlayerConnection::from(tx));
+
+                        // Add the player and handle the connection message
+                        {
+                            let mut room_manager = handler.state.write().await;
+                            room_manager.add_waiting_player(player);
+                            room_manager.try_create_room();
                         }
+
                         player_id = Some(handler.state.read().await.get_player_id(name).unwrap());
                     },
-                    _ => {
-                        let error_msg = WsMessage::Text(Utf8Bytes::from("First message must be Connect"));
-                        let _ = ws_sender.send(error_msg).await;
-                        return;
-                    }
+                    _ => return, // Invalid first message
                 }
             },
-            Err(_) => {
-                let error_msg = WsMessage::Text(Utf8Bytes::from("Failed to parse connect message"));
-                let _ = ws_sender.send(error_msg).await;
-                return;
-            }
+            Err(_) => return, // Failed to parse message
         }
     }
 
     // Main message handling loop
     while let Some(Ok(msg)) = ws_receiver.next().await {
-        match parse_incoming_message(msg) {
-            Ok(incoming) => {
-                let responses = handler.handle_message(incoming, player_id).await;
-                for response in responses {
-                    if ws_sender.send(response).await.is_err() {
-                        break;
-                    }
-                }
-            },
-            Err(_) => {
-                let error_msg = WsMessage::Text(Utf8Bytes::from("Failed to parse message"));
-                if ws_sender.send(error_msg).await.is_err() {
-                    break;
-                }
-            }
+        if let Ok(incoming) = parse_incoming_message(msg) {
+            handler.handle_message(incoming, player_id).await;
         }
     }
 

@@ -11,3 +11,4 @@ futures = "0.3.31"
 uuid = { version = "1.11.0", features = ["v4", "serde"] }
 serde_json = "1.0.135"
 serde = "1.0.217"
+tokio-stream = "0.1.17"

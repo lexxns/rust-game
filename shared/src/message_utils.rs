@@ -5,6 +5,7 @@ use std::error::Error;
 
 // Type alias for a player's WebSocket connection
 pub type PlayerConnection = mpsc::UnboundedSender<WsMessage>;
+pub type Receiver = mpsc::UnboundedReceiver<WsMessage>;
 
 // Represents all possible message types in our system
 #[derive(Debug, Serialize, Deserialize)]
