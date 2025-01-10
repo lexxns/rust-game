@@ -182,3 +182,199 @@ pub fn handle_incoming_message(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use tokio::sync::mpsc;
+    use serde_json::json;
+
+    // Helper function to create a mock player connection
+    fn create_mock_connection() -> (PlayerConnection, mpsc::UnboundedReceiver<WsMessage>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (PlayerConnection::from(tx), rx)
+    }
+
+    #[test]
+    fn test_room_message_parsing() {
+        let room_msg = json!({
+            "type": "Room",
+            "payload": "Hello room!"
+        });
+        println!("Sending JSON: {}", room_msg.to_string());
+        let ws_message = WsMessage::Text(Utf8Bytes::from(room_msg.to_string()));
+        let result = parse_incoming_message(ws_message);
+        println!("Parse result: {:?}", result);
+
+        match result {
+            Ok(parsed) => {
+                println!("Successfully parsed message: {:?}", parsed);
+                match &parsed.message_type {
+                    MessageType::Room(content) => {
+                        println!("Got Room message with content: {}", content);
+                        assert_eq!(content, "Hello room!");
+                    },
+                    MessageType::Private { .. } => panic!("Got Private when expecting Room"),
+                    MessageType::System(_) => panic!("Got System when expecting Room"),
+                    MessageType::Connect { .. } => panic!("Got Connect when expecting Room"),
+                }
+            },
+            Err(e) => panic!("Failed to parse message: {:?}", e)
+        }
+    }
+
+    #[test]
+    fn test_private_message_parsing() {
+        let private_msg = json!({
+            "type": "Private",
+            "payload": {
+                "recipient": "user123",
+                "content": "Private message"
+            }
+        });
+        let ws_message = WsMessage::Text(Utf8Bytes::from(private_msg.to_string()));
+        let result = parse_incoming_message(ws_message);
+
+        match result {
+            Ok(parsed) => {
+                match &parsed.message_type {
+                    MessageType::Private { recipient, content } => {
+                        assert_eq!(recipient, "user123");
+                        assert_eq!(content, "Private message");
+                    },
+                    other => panic!("Expected MessageType::Private but got: {:?}", other),
+                }
+            },
+            Err(e) => panic!("Failed to parse private message: {:?}", e)
+        }
+    }
+
+    #[test]
+    fn test_connect_message_parsing() {
+        let connect_msg = json!({
+            "type": "Connect",
+            "payload": {
+                "name": "TestUser"
+            }
+        });
+        let ws_message = WsMessage::Text(Utf8Bytes::from(connect_msg.to_string()));
+        let result = parse_incoming_message(ws_message);
+
+        match result {
+            Ok(parsed) => {
+                match &parsed.message_type {
+                    MessageType::Connect { name } => {
+                        assert_eq!(name, "TestUser");
+                    },
+                    other => panic!("Expected MessageType::Connect but got: {:?}", other),
+                }
+            },
+            Err(e) => panic!("Failed to parse connect message: {:?}", e)
+        }
+    }
+
+    #[test]
+    fn test_system_message_parsing() {
+        let system_msg = json!({
+            "type": "System",
+            "payload": "System notification"
+        });
+        let ws_message = WsMessage::Text(Utf8Bytes::from(system_msg.to_string()));
+        let result = parse_incoming_message(ws_message);
+
+        match result {
+            Ok(parsed) => {
+                match &parsed.message_type {
+                    MessageType::System(content) => {
+                        assert_eq!(content, "System notification");
+                    },
+                    other => panic!("Expected MessageType::System but got: {:?}", other),
+                }
+            },
+            Err(e) => panic!("Failed to parse system message: {:?}", e)
+        }
+    }
+
+    #[test]
+    fn test_error_cases() {
+        // Missing type field
+        let missing_type = json!({
+            "payload": "Hello"
+        });
+        let ws_message = WsMessage::Text(Utf8Bytes::from(missing_type.to_string()));
+        assert!(parse_incoming_message(ws_message).is_err(), "Should fail when type field is missing");
+
+        // Missing payload
+        let missing_payload = json!({
+            "type": "Room"
+        });
+        let ws_message = WsMessage::Text(Utf8Bytes::from(missing_payload.to_string()));
+        assert!(parse_incoming_message(ws_message).is_err(), "Should fail when payload field is missing");
+
+        // Invalid message type
+        let invalid_type = json!({
+            "type": "InvalidType",
+            "payload": "Hello"
+        });
+        let ws_message = WsMessage::Text(Utf8Bytes::from(invalid_type.to_string()));
+        assert!(parse_incoming_message(ws_message).is_err(), "Should fail with invalid type");
+
+        // Invalid JSON
+        let ws_message = WsMessage::Text(Utf8Bytes::from("invalid json"));
+        assert!(parse_incoming_message(ws_message).is_err(), "Should fail with invalid JSON");
+
+        // Empty message
+        let ws_message = WsMessage::Text(Utf8Bytes::from(""));
+        assert!(parse_incoming_message(ws_message).is_err(), "Should fail with empty message");
+    }
+
+    #[test]
+    fn test_player_message_creation() {
+        let player1_id = Uuid::new_v4();
+        let player2_id = Uuid::new_v4();
+        let content = "Test message";
+
+        // Test basic message creation
+        let msg = PlayerMessage::new(content, player1_id, {
+            let mut set = HashSet::new();
+            set.insert(player2_id);
+            set
+        });
+
+        assert_eq!(msg.text(), &Utf8Bytes::from(content));
+        assert_eq!(msg.from(), player1_id);
+        assert!(msg.targets().contains(&player2_id));
+        assert_eq!(msg.targets().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_message_sending() {
+        let sender_id = Uuid::new_v4();
+        let recipient_id = Uuid::new_v4();
+        let content = "Test message";
+
+        let mut senders = HashMap::new();
+        let (sender1_conn, mut receiver1) = create_mock_connection();
+        let (sender2_conn, mut receiver2) = create_mock_connection();
+
+        senders.insert(sender_id, sender1_conn);
+        senders.insert(recipient_id, sender2_conn);
+
+        let msg = PlayerMessage::private(content, sender_id, recipient_id);
+        msg.send(&senders);
+
+        // Check that the message was received by the intended recipient
+        if let Some(received) = receiver2.try_recv().ok() {
+            match received {
+                WsMessage::Text(text) => assert_eq!(text, content),
+                _ => panic!("Unexpected message type"),
+            }
+        } else {
+            panic!("No message received");
+        }
+
+        // Verify sender didn't receive the message
+        assert!(receiver1.try_recv().is_err());
+    }
+}
