@@ -47,6 +47,10 @@ impl RoomManager {
         }
     }
 
+    pub fn rooms(&self) -> &HashMap<Uuid, Room> {
+        &self.rooms
+    }
+
     pub fn players(&self) -> &Vec<Player> {
         &self.online_players
     }
