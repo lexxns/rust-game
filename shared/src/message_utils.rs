@@ -14,7 +14,7 @@ pub enum MessageType {
     Room(String),
     Private { recipient: String, content: String },
     System(String),
-    Connect { name: String },
+    Connect { name: String }
 }
 
 // The structured format of messages coming from clients

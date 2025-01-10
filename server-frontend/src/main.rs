@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (ws_stream, _) = connect_async(url).await?;
     println!("WebSocket connected");
     println!("Commands: /connect <name>, /room <msg>, /private <name> <msg>");
-    println!("Just type to send to current room");
+    println!("Connect first before anything else");
 
     let (mut write, mut read) = ws_stream.split();
 
@@ -21,9 +21,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(Ok(msg)) = read.next().await {
             if let WsMessage::Text(text) = msg {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    println!("Received: {}", serde_json::to_string_pretty(&value).unwrap());
+                    match value.get("type").and_then(|t| t.as_str()) {
+                        Some("Room") | Some("Private") | Some("System") => {
+                            if let Some(content) = value.get("payload").and_then(|p| p.as_str()) {
+                                println!("{}", content);
+                            }
+                        }
+                        _ => {
+                            println!("Unknown message: {}", text);
+                        }
+                    }
                 } else {
-                    println!("Received: {}", text);
+                    println!("\x1b[94m{}\x1b[0m", text); // Light blue for system messages
                 }
             }
         }

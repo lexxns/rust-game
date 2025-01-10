@@ -50,8 +50,10 @@ impl ConnectionHandler {
                 if let Some((_, other_player_id)) = room_manager.get_room_info(&player_id) {
                     let mut targets = HashSet::new();
                     targets.insert(other_player_id);
-                    let msg = PlayerMessage::room_broadcast(content.to_string(), player_id, targets);
-                    msg.send(room_manager.player_connections());
+                    if let Some(sender_name) = room_manager.get_player_name(&player_id) {
+                        let msg = PlayerMessage::room_broadcast(content.to_string(), player_id, sender_name, targets);
+                        msg.send(room_manager.player_connections());
+                    }
                 } else {
                     let msg = PlayerMessage::system("You are not in a room", player_id);
                     msg.send(room_manager.player_connections());
@@ -60,8 +62,10 @@ impl ConnectionHandler {
             (MessageType::Private { recipient, content }, Some(player_id)) => {
                 let room_manager = self.state.read().await;
                 if let Some(recipient_id) = room_manager.get_player_id(recipient.to_string()) {
-                    let msg = PlayerMessage::private(content.to_string(), player_id, recipient_id);
-                    msg.send(room_manager.player_connections());
+                    if let Some(sender_name) = room_manager.get_player_name(&player_id) {
+                        let msg = PlayerMessage::private(content.to_string(), player_id, sender_name, recipient_id);
+                        msg.send(room_manager.player_connections());
+                    }
                 } else {
                     let msg = PlayerMessage::system("Recipient not found", player_id);
                     msg.send(room_manager.player_connections());

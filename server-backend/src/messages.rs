@@ -10,10 +10,24 @@ pub trait CommsMessage {
     fn from(&self) -> Uuid;
     fn targets(&self) -> &HashSet<Uuid>;
     fn send(&self, senders: &std::collections::HashMap<Uuid, PlayerConnection>) {
-        let message = WsMessage::Text(self.text().clone());
-        for target in self.targets() {
-            if let Some(sender) = senders.get(target) {
-                let _ = sender.send(message.clone());
+        // Create the message with the same format as IncomingMessage
+        let message_type = if self.from() == Uuid::nil() {
+            MessageType::System(self.text().to_string())
+        } else {
+            MessageType::Room(self.text().to_string())
+        };
+
+        let message = IncomingMessage {
+            message_type,
+        };
+
+        // Serialize and send
+        if let Ok(json) = serde_json::to_string(&message) {
+            let ws_message = WsMessage::Text(Utf8Bytes::from(json));
+            for target in self.targets() {
+                if let Some(sender) = senders.get(target) {
+                    let _ = sender.send(ws_message.clone());
+                }
             }
         }
     }
@@ -22,14 +36,16 @@ pub trait CommsMessage {
 pub struct PlayerMessage {
     content: Utf8Bytes,
     originator: Uuid,
+    originator_name: Option<String>,
     target_players: HashSet<Uuid>,
 }
 
 impl PlayerMessage {
-    pub fn new(content: impl Into<Utf8Bytes>, from: Uuid, to: impl Into<HashSet<Uuid>>) -> Self {
+    pub fn new(content: impl Into<Utf8Bytes>, from: Uuid, from_name: Option<String>, to: impl Into<HashSet<Uuid>>) -> Self {
         Self {
             content: content.into(),
             originator: from,
+            originator_name: from_name,
             target_players: to.into(),
         }
     }
@@ -38,27 +54,46 @@ impl PlayerMessage {
     pub fn system(content: impl Into<Utf8Bytes>, to: Uuid) -> Self {
         let mut targets = HashSet::new();
         targets.insert(to);
+        // Create colored content directly as Utf8Bytes
+        let mut colored_content = String::from("\x1b[94m");
+        colored_content.push_str(&content.into().to_string());
+        colored_content.push_str("\x1b[0m");
         Self {
-            content: content.into(),
+            content: Utf8Bytes::from(colored_content),
             originator: Uuid::nil(),
+            originator_name: None,
             target_players: targets,
         }
     }
 
-    pub fn room_broadcast(content: impl Into<Utf8Bytes>, from: Uuid, room_members: impl Into<HashSet<Uuid>>) -> Self {
+    // Update room messages to be yellow
+    pub fn room_broadcast(content: impl Into<Utf8Bytes>, from: Uuid, from_name: String, room_members: impl Into<HashSet<Uuid>>) -> Self {
+        let mut colored_content = String::from("\x1b[93m");
+        colored_content.push_str(&from_name);
+        colored_content.push_str(": ");
+        colored_content.push_str(&content.into().to_string());
+        colored_content.push_str("\x1b[0m");
         Self {
-            content: content.into(),
+            content: Utf8Bytes::from(colored_content),
             originator: from,
+            originator_name: Some(from_name),
             target_players: room_members.into(),
         }
     }
 
-    pub fn private(content: impl Into<Utf8Bytes>, from: Uuid, to: Uuid) -> Self {
+    // Update private messages to be pink
+    pub fn private(content: impl Into<Utf8Bytes>, from: Uuid, from_name: String, to: Uuid) -> Self {
+        let mut colored_content = String::from("\x1b[95m");
+        colored_content.push_str(&from_name);
+        colored_content.push_str(": ");
+        colored_content.push_str(&content.into().to_string());
+        colored_content.push_str("\x1b[0m");
         let mut targets = HashSet::new();
         targets.insert(to);
         Self {
-            content: content.into(),
+            content: Utf8Bytes::from(colored_content),
             originator: from,
+            originator_name: Some(from_name),
             target_players: targets,
         }
     }
@@ -67,9 +102,11 @@ impl PlayerMessage {
         let mut targets = HashSet::new();
         targets.insert(player1);
         targets.insert(player2);
+        let colored_content = "\x1b[94mMatched with player!\x1b[0m";
         Self {
-            content: Utf8Bytes::from("Matched with player!"),
-            originator: Uuid::nil(), // System message
+            content: Utf8Bytes::from(colored_content),
+            originator: Uuid::nil(),
+            originator_name: None,
             target_players: targets,
         }
     }
@@ -77,9 +114,11 @@ impl PlayerMessage {
     pub fn player_disconnected(to: Uuid) -> Self {
         let mut targets = HashSet::new();
         targets.insert(to);
+        let colored_content = "\x1b[94mYour partner has disconnected\x1b[0m";
         Self {
-            content: Utf8Bytes::from("Your partner has disconnected"),
-            originator: Uuid::nil(), // System message
+            content: Utf8Bytes::from(colored_content),
+            originator: Uuid::nil(),
+            originator_name: None,
             target_players: targets,
         }
     }
@@ -96,6 +135,29 @@ impl CommsMessage for PlayerMessage {
 
     fn targets(&self) -> &HashSet<Uuid> {
         &self.target_players
+    }
+
+    fn send(&self, senders: &std::collections::HashMap<Uuid, PlayerConnection>) {
+        // Create the message with the same format as IncomingMessage
+        let message_type = if self.originator == Uuid::nil() {
+            MessageType::System(self.content.clone().parse().unwrap())
+        } else {
+            MessageType::Room(self.content.clone().parse().unwrap())
+        };
+
+        let message = IncomingMessage {
+            message_type,
+        };
+
+        // Serialize and send
+        if let Ok(json) = serde_json::to_string(&message) {
+            let ws_message = WsMessage::Text(Utf8Bytes::from(json));
+            for target in self.targets() {
+                if let Some(sender) = senders.get(target) {
+                    let _ = sender.send(ws_message.clone());
+                }
+            }
+        }
     }
 }
 
@@ -162,7 +224,9 @@ pub fn handle_incoming_message(
                 members.insert(other_id);
                 members
             }) {
-                Box::new(PlayerMessage::room_broadcast(content, sender_id, members)).send(&room_manager.player_connections())
+                if let Some(sender_name) = room_manager.get_player_name(&sender_id) {
+                    Box::new(PlayerMessage::room_broadcast(content, sender_id, sender_name, members)).send(&room_manager.player_connections())
+                }
             } else {
                 Box::new(PlayerMessage::system("You are not in a room", sender_id)).send(&room_manager.player_connections())
             }
@@ -171,7 +235,9 @@ pub fn handle_incoming_message(
             println!("Got a private message for {:?} with content {:?}", recipient, content);
 
             if let Some(recipient_id) = room_manager.get_player_id(recipient) {
-                Box::new(PlayerMessage::private(content, sender_id, recipient_id)).send(&room_manager.player_connections())
+                if let Some(sender_name) = room_manager.get_player_name(&sender_id) {
+                    Box::new(PlayerMessage::private(content, sender_id, sender_name, recipient_id)).send(&room_manager.player_connections())
+                }
             }
         },
         MessageType::System(content) => {
@@ -179,6 +245,9 @@ pub fn handle_incoming_message(
         },
         MessageType::Connect { .. } => {
             Box::new(PlayerMessage::system("Connected successfully", sender_id)).send(&room_manager.player_connections())
+        }
+        _ => {
+            Box::new(PlayerMessage::system("Unknown Message Type", sender_id)).send(&room_manager.player_connections())
         }
     }
 }
@@ -218,6 +287,7 @@ mod tests {
                     MessageType::Private { .. } => panic!("Got Private when expecting Room"),
                     MessageType::System(_) => panic!("Got System when expecting Room"),
                     MessageType::Connect { .. } => panic!("Got Connect when expecting Room"),
+                    _ => panic!("Got unexpected message type"),
                 }
             },
             Err(e) => panic!("Failed to parse message: {:?}", e)
@@ -336,13 +406,13 @@ mod tests {
         let content = "Test message";
 
         // Test basic message creation
-        let msg = PlayerMessage::new(content, player1_id, {
+        let msg = PlayerMessage::new(content, player1_id, Some("anyone".into()), {
             let mut set = HashSet::new();
             set.insert(player2_id);
             set
         });
 
-        assert_eq!(msg.text(), &Utf8Bytes::from(content));
+        assert_eq!(*msg.text(), content);
         assert_eq!(msg.from(), player1_id);
         assert!(msg.targets().contains(&player2_id));
         assert_eq!(msg.targets().len(), 1);
@@ -361,7 +431,7 @@ mod tests {
         senders.insert(sender_id, sender1_conn);
         senders.insert(recipient_id, sender2_conn);
 
-        let msg = PlayerMessage::private(content, sender_id, recipient_id);
+        let msg = PlayerMessage::private(content, sender_id, "anyone".into(), recipient_id);
         msg.send(&senders);
 
         // Check that the message was received by the intended recipient

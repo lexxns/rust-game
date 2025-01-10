@@ -47,6 +47,13 @@ impl RoomManager {
         }
     }
 
+    pub fn get_player_name(&self, player_id: &Uuid) -> Option<String> {
+        self.online_players
+            .iter()
+            .find(|p| p.id == *player_id)
+            .map(|p| p.name.clone())
+    }
+
     pub fn rooms(&self) -> &HashMap<Uuid, Room> {
         &self.rooms
     }
@@ -187,7 +194,7 @@ mod connection_tests {
 
         // Test message delivery using stored connections
         let test_msg = "Test message";
-        PlayerMessage::private(test_msg, player1_id, player2_id)
+        PlayerMessage::private(test_msg, player1_id, "anyone".into(), player2_id)
             .send(room_manager.player_connections());
 
         assert!(expect_message(&mut rx2, test_msg).await,
@@ -254,7 +261,7 @@ mod connection_tests {
         if let Some((room_id, _)) = room_manager.get_room_info(&player1_id) {
             let mut targets = HashSet::new();
             targets.insert(player2_id);
-            PlayerMessage::room_broadcast(room_msg, player1_id, targets)
+            PlayerMessage::room_broadcast(room_msg, player1_id, "anyone".into(), targets)
                 .send(room_manager.player_connections());
         }
 
