@@ -57,3 +57,52 @@ impl MessageType {
     }
 }
 
+// Print functions
+pub fn print_white(text: &str) {
+    println!("\x1b[37m{}\x1b[0m", text);
+}
+
+pub fn print_blue(text: &str) {
+    println!("\x1b[94m{}\x1b[0m", text);
+}
+
+pub fn print_yellow(text: &str) {
+    println!("\x1b[93m{}\x1b[0m", text);
+}
+
+pub fn print_pink(text: &str) {
+    println!("\x1b[95m{}\x1b[0m", text);
+}
+
+pub fn print_private_with_recipient(recipient: &str, text: &str) {
+    println!("\x1b[37m({}) {}\x1b[0m", recipient, text);
+}
+
+#[macro_export]
+macro_rules! display_text {
+    // For own messages without recipient
+    ($msg_type:expr, $content:expr, true) => {
+        $crate::message_utils::print_white(&$content.to_string())
+    };
+
+    // For own private messages with recipient
+    ($msg_type:expr, $content:expr, true, $recipient:expr) => {
+        if $msg_type == "Private" {
+            $crate::message_utils::print_private_with_recipient($recipient, &$content.to_string())
+        } else {
+            $crate::message_utils::print_white(&$content.to_string())
+        }
+    };
+
+    // For received messages (original colors)
+    ($msg_type:expr, $content:expr) => {
+        match $msg_type {
+            "System" => $crate::message_utils::print_blue(&$content.to_string()),
+            "Room" => $crate::message_utils::print_yellow(&$content.to_string()),
+            "Private" => $crate::message_utils::print_pink(&$content.to_string()),
+            _ => println!("{}", $content)
+        }
+    };
+}
+
+pub use display_text;

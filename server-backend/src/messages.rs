@@ -50,48 +50,33 @@ impl PlayerMessage {
         }
     }
 
-    // Factory methods for specific message types
     pub fn system(content: impl Into<Utf8Bytes>, to: Uuid) -> Self {
         let mut targets = HashSet::new();
         targets.insert(to);
-        // Create colored content directly as Utf8Bytes
-        let mut colored_content = String::from("\x1b[94m");
-        colored_content.push_str(&content.into().to_string());
-        colored_content.push_str("\x1b[0m");
         Self {
-            content: Utf8Bytes::from(colored_content),
+            content: content.into(),
             originator: Uuid::nil(),
             originator_name: None,
             target_players: targets,
         }
     }
 
-    // Update room messages to be yellow
     pub fn room_broadcast(content: impl Into<Utf8Bytes>, from: Uuid, from_name: String, room_members: impl Into<HashSet<Uuid>>) -> Self {
-        let mut colored_content = String::from("\x1b[93m");
-        colored_content.push_str(&from_name);
-        colored_content.push_str(": ");
-        colored_content.push_str(&content.into().to_string());
-        colored_content.push_str("\x1b[0m");
+        let formatted_content = format!("{}: {}", from_name, content.into());
         Self {
-            content: Utf8Bytes::from(colored_content),
+            content: Utf8Bytes::from(formatted_content),
             originator: from,
             originator_name: Some(from_name),
             target_players: room_members.into(),
         }
     }
 
-    // Update private messages to be pink
     pub fn private(content: impl Into<Utf8Bytes>, from: Uuid, from_name: String, to: Uuid) -> Self {
-        let mut colored_content = String::from("\x1b[95m");
-        colored_content.push_str(&from_name);
-        colored_content.push_str(": ");
-        colored_content.push_str(&content.into().to_string());
-        colored_content.push_str("\x1b[0m");
+        let formatted_content = format!("{}: {}", from_name, content.into());
         let mut targets = HashSet::new();
         targets.insert(to);
         Self {
-            content: Utf8Bytes::from(colored_content),
+            content: Utf8Bytes::from(formatted_content),
             originator: from,
             originator_name: Some(from_name),
             target_players: targets,
@@ -102,9 +87,8 @@ impl PlayerMessage {
         let mut targets = HashSet::new();
         targets.insert(player1);
         targets.insert(player2);
-        let colored_content = "\x1b[94mMatched with player!\x1b[0m";
         Self {
-            content: Utf8Bytes::from(colored_content),
+            content: Utf8Bytes::from("Matched with player!"),
             originator: Uuid::nil(),
             originator_name: None,
             target_players: targets,
@@ -114,9 +98,8 @@ impl PlayerMessage {
     pub fn player_disconnected(to: Uuid) -> Self {
         let mut targets = HashSet::new();
         targets.insert(to);
-        let colored_content = "\x1b[94mYour partner has disconnected\x1b[0m";
         Self {
-            content: Utf8Bytes::from(colored_content),
+            content: Utf8Bytes::from("Your partner has disconnected"),
             originator: Uuid::nil(),
             originator_name: None,
             target_players: targets,
