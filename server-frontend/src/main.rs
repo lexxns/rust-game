@@ -4,34 +4,49 @@ use futures_util::{SinkExt, StreamExt};
 use std::io::{self, Write};
 use tokio::io::AsyncBufReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use std::str::FromStr;
-use crate::message_generator::parse_command;
-use shared::message_utils::{display_text};
+use crate::message_generator::{parse_command, IntoWebSocketMessage};
+use shared::message_utils::{display_text, MessageType};
+use clap::Parser;
+
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    name: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = "ws://127.0.0.1:8080";
+    let args = Args::parse();
     let (ws_stream, _) = connect_async(url).await?;
     println!("WebSocket connected");
-    println!("Commands: /connect <name>, /room <msg>, /private <name> <msg>");
-    println!("Connect first before anything else");
+    println!("Commands: /room <msg>, /private <name> <msg>");
 
     let (mut write, mut read) = ws_stream.split();
 
     // Track our username and last sent message
     let my_username = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-    let my_username_clone = my_username.clone();
 
     // Store last sent message type and recipient for displaying our own messages
     let last_sent = std::sync::Arc::new(std::sync::Mutex::new(None::<(String, Option<String>)>));
     let last_sent_clone = last_sent.clone();
+
+    *my_username.lock().unwrap() = args.name;
+    if let Ok(connect_msg) = MessageType::new_connect(String::from(my_username.lock().unwrap().clone())) {
+        write.send(connect_msg.into_ws_message().unwrap()).await?;
+    } else {
+        panic!("Failed to connect to the server - Invalid Username");
+    }
+
 
     let receive_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = read.next().await {
             if let WsMessage::Text(text) = msg {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     // Check if this is our own message
-                    let username = my_username_clone.lock().unwrap().clone();
+                    let username = my_username.lock().unwrap().clone();
                     let sender_name = value.get("sender_name")
                         .and_then(|s| s.as_str())
                         .unwrap_or("");
@@ -41,11 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match value.get("type").and_then(|t| t.as_str()) {
                         Some("Room") => {
                             if let Some(content) = value.get("payload").and_then(|p| p.as_str()) {
-                                if is_own_message {
-                                    display_text!("Room", content, true);
-                                } else {
-                                    display_text!("Room", content);
-                                }
+                                let c = content;
+                                display_text!("Room", c);
                             }
                         }
                         Some("Private") => {
@@ -91,11 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Parse command and update last sent message info
-        if line.starts_with("/connect") {
-            if let Some(name) = line.strip_prefix("/connect").map(str::trim) {
-                *my_username.lock().unwrap() = name.to_string();
-            }
-        } else if line.starts_with("/private") || line.starts_with("/pm") {
+        if line.starts_with("/private") || line.starts_with("/pm") {
             if let Some(content) = line.strip_prefix(if line.starts_with("/pm") { "/pm" } else { "/private" }) {
                 if let Some((recipient, _)) = content.trim().split_once(' ') {
                     *last_sent.lock().unwrap() = Some(("Private".to_string(), Some(recipient.to_string())));

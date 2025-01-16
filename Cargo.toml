@@ -4,8 +4,4 @@ members = [
     "server-backend",
     "server-frontend",
 ]
-
-#[package]
-#name = "cardserver"
-#version = "0.0.1"
-#resolver = "2"
+resolver = "2"

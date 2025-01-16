@@ -8,10 +8,9 @@ use shared::message_utils::{MessageType, IncomingMessage, PlayerConnection};
 
 mod room;
 mod messages;
-mod game;
 
 use room::{RoomManager, Player};
-use messages::{handle_incoming_message, parse_incoming_message, CommsMessage, PlayerMessage};
+use messages::{parse_incoming_message, CommsMessage, PlayerMessage};
 
 // Core connection handler that manages the business logic
 pub struct ConnectionHandler {

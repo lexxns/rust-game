@@ -229,9 +229,6 @@ pub fn handle_incoming_message(
         MessageType::Connect { .. } => {
             Box::new(PlayerMessage::system("Connected successfully", sender_id)).send(&room_manager.player_connections())
         }
-        _ => {
-            Box::new(PlayerMessage::system("Unknown Message Type", sender_id)).send(&room_manager.player_connections())
-        }
     }
 }
 
