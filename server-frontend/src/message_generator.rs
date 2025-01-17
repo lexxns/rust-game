@@ -25,7 +25,7 @@ pub fn parse_command(input: &str) -> Result<WsMessage, Box<dyn std::error::Error
     // If no command prefix, treat as a room message
     let input = input.trim();
     if !input.starts_with('/') {
-        return MessageType::Room(input.to_string()).into_ws_message().map_err(Into::into);
+        return MessageType::new_room(None, input.to_string())?.into_ws_message().map_err(Into::into);
     }
 
     // Split into command and content
@@ -39,13 +39,13 @@ pub fn parse_command(input: &str) -> Result<WsMessage, Box<dyn std::error::Error
             MessageType::new_connect(content.to_string())?
         },
         "room" => {
-            MessageType::new_room(content.to_string())?
+            MessageType::new_room(None, content.to_string())?
         },
         "private" | "pm" => {
             let mut parts = content.splitn(2, ' ');
             let recipient = parts.next().unwrap_or("").trim();
             let message = parts.next().unwrap_or("").trim();
-            MessageType::new_private(recipient.to_string(), message.to_string())?
+            MessageType::new_private(None, recipient.to_string(), message.to_string())?
         },
         _ => return Err("Unknown command. Available commands: /connect, /room, /private".into())
     };
@@ -159,7 +159,10 @@ mod tests {
     #[test]
     fn test_message_type_conversion() {
         // Test direct MessageType to WebSocket message conversion
-        let room_type = MessageType::Room("test message".to_string());
+        let room_type = MessageType::Room{
+            sender: None,
+            content: "test message".to_string()
+        };
         let result = room_type.into_ws_message().unwrap();
         let json = extract_json(result).unwrap();
         assert_eq!(json["type"], "Room");
@@ -172,6 +175,7 @@ mod tests {
         assert_eq!(json["payload"]["name"], "David");
 
         let private_type = MessageType::Private {
+            sender: None,
             recipient: "Eve".to_string(),
             content: "private test".to_string()
         };

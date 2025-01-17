@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 use shared::message_utils::PlayerConnection;
-use crate::messages::{CommsMessage, PlayerMessage};
+use crate::messages::{CommsMessage};
+use crate::{privatemsg, roommsg, systemmsg, systemmsg_multi};
 
 // Represents a connected player
 #[derive(Clone)]
@@ -82,10 +83,10 @@ impl RoomManager {
     }
 
     // Try to match players and create a room
-    pub fn try_create_room(&mut self) -> Option<(Uuid, Uuid)> {
+    pub fn try_create_room(&mut self) {
         if self.waiting_players.len() >= 2 {
-            let player2 = self.waiting_players.pop()?;
-            let player1 = self.waiting_players.pop()?;
+            let player2 = self.waiting_players.pop().unwrap();
+            let player1 = self.waiting_players.pop().unwrap();
 
             let room_id = Uuid::new_v4();
             let room = Room {
@@ -97,12 +98,8 @@ impl RoomManager {
             self.player_to_room.insert(player1.id, room_id);
             self.player_to_room.insert(player2.id, room_id);
 
-            let match_msg = PlayerMessage::player_matched(player1.id, player2.id);
-            match_msg.send(&self.player_connections);
-
-            Some((player1.id, player2.id))
-        } else {
-            None
+            systemmsg_multi!("Matched with player!", player1.id, player2.id)
+                .send(&self.player_connections());
         }
     }
 
@@ -110,6 +107,48 @@ impl RoomManager {
     pub fn get_player_sender(&self, player_id: &Uuid) -> Option<PlayerConnection> {
         let res = self.online_players.iter().find(|&p| p.id == *player_id);
         res.map(|p| p.connection.clone())
+    }
+
+    pub fn send_room_msg(&self, content: &str, player_id: &Uuid) {
+        let player_cpy = player_id.clone();
+        if let (Some((_, other_player_id)), Some(sender_name)) = (
+                &self.get_room_info(player_id),
+                &self.get_player_name(player_id),
+        ){
+            println!("Sending room msg for {}: {}", player_id, content);
+            println!("The message will go to: {}", other_player_id);
+            roommsg!(
+                content,
+                player_cpy,
+                sender_name.clone(),
+                *other_player_id
+            ).send(&self.player_connections());
+        } else {
+            systemmsg!("You are not in a room", player_cpy).send(&self.player_connections());
+        }
+    }
+
+    pub fn send_private_msg(&self, content: &str, sender_id: &Uuid, target_name: String) {
+        let name_cpy = target_name.clone();
+        let sender_cpy = sender_id.clone();
+        if let (Some(sender_name), Some(target_id)) = (
+            &self.get_player_name(sender_id),
+            &self.get_player_id(target_name)
+        ) {
+            privatemsg!(
+                content,
+                sender_cpy,
+                sender_name.clone(),
+                *target_id,
+                name_cpy
+            ).send(&self.player_connections());
+        } else {
+            systemmsg!("Target not Found", sender_cpy).send(&self.player_connections());
+        }
+    }
+
+    pub fn send_system_msg(&self, content: &str, target_id: Uuid) {
+        systemmsg!(content, target_id).send(&self.player_connections());
     }
 
     // Get room and other player info for a given player
@@ -140,8 +179,7 @@ impl RoomManager {
                 };
                 self.player_to_room.remove(&other_player_id);
 
-                // Notify other player about disconnect
-                PlayerMessage::player_disconnected(other_player_id).send(&self.player_connections);
+                systemmsg!("The other player disconnected", other_player_id).send(&self.player_connections());
             }
         }
         self.online_players.retain(|p| p.id != *player_id);
@@ -194,7 +232,7 @@ mod connection_tests {
 
         // Test message delivery using stored connections
         let test_msg = "Test message";
-        PlayerMessage::private(test_msg, player1_id, "anyone".into(), player2_id)
+        PlayerTargetMessage::private(test_msg, player1_id, "anyone".into(), player2_id)
             .send(room_manager.player_connections());
 
         assert!(expect_message(&mut rx2, test_msg).await,
@@ -261,7 +299,7 @@ mod connection_tests {
         if let Some((room_id, _)) = room_manager.get_room_info(&player1_id) {
             let mut targets = HashSet::new();
             targets.insert(player2_id);
-            PlayerMessage::room_broadcast(room_msg, player1_id, "anyone".into(), targets)
+            PlayerTargetMessage::room_broadcast(room_msg, player1_id, "anyone".into(), targets)
                 .send(room_manager.player_connections());
         }
 

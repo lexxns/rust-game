@@ -1,8 +1,7 @@
 use futures::{SinkExt, StreamExt};
-use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio_tungstenite::tungstenite::{Message as WsMessage, Utf8Bytes};
+use tokio::sync::{mpsc, RwLock};
+use tokio_tungstenite::tungstenite::{Message as WsMessage, Message, Utf8Bytes};
 use std::sync::Arc;
-use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 use shared::message_utils::{MessageType, IncomingMessage, PlayerConnection};
 
@@ -10,7 +9,7 @@ mod room;
 mod messages;
 
 use room::{RoomManager, Player};
-use messages::{parse_incoming_message, CommsMessage, PlayerMessage};
+use messages::{parse_incoming_message, CommsMessage};
 
 // Core connection handler that manages the business logic
 pub struct ConnectionHandler {
@@ -25,57 +24,27 @@ impl ConnectionHandler {
     // Handle an incoming message and return responses
     pub async fn handle_message(&self, incoming: IncomingMessage, player_id: Option<Uuid>) -> Vec<WsMessage> {
         let mut responses = Vec::new();
-
+        let mut room_manager = self.state.write().await;
         match (&incoming.message_type, player_id) {
             (MessageType::Connect { name }, None) => {
-                let mut room_manager = self.state.write().await;
-
                 // Create and add the player
                 let (message_tx, _) = mpsc::unbounded_channel();
                 let player = Player::new(name.to_string(), PlayerConnection::from(message_tx));
                 room_manager.add_waiting_player(player);
 
                 // Try to create a room
-                if let Some((p1_id, p2_id)) = room_manager.try_create_room() {
-                    let mut targets = HashSet::new();
-                    targets.insert(p1_id);
-                    targets.insert(p2_id);
-                    let match_msg = PlayerMessage::player_matched(p1_id, p2_id);
-                    match_msg.send(room_manager.player_connections());
-                }
+                room_manager.try_create_room();
 
                 responses.push(WsMessage::Text(Utf8Bytes::from("Connected successfully")));
             },
-            (MessageType::Room(content), Some(player_id)) => {
-                let room_manager = self.state.read().await;
-                if let Some((_, other_player_id)) = room_manager.get_room_info(&player_id) {
-                    let mut targets = HashSet::new();
-                    targets.insert(other_player_id);
-                    if let Some(sender_name) = room_manager.get_player_name(&player_id) {
-                        let msg = PlayerMessage::room_broadcast(content.to_string(), player_id, sender_name, targets);
-                        msg.send(room_manager.player_connections());
-                    }
-                } else {
-                    let msg = PlayerMessage::system("You are not in a room", player_id);
-                    msg.send(room_manager.player_connections());
-                }
+            (MessageType::Room {content, .. }, Some(player_id)) => {
+                room_manager.send_room_msg(content, &player_id);
             },
-            (MessageType::Private { recipient, content }, Some(player_id)) => {
-                let room_manager = self.state.read().await;
-                if let Some(recipient_id) = room_manager.get_player_id(recipient.to_string()) {
-                    if let Some(sender_name) = room_manager.get_player_name(&player_id) {
-                        let msg = PlayerMessage::private(content.to_string(), player_id, sender_name, recipient_id);
-                        msg.send(room_manager.player_connections());
-                    }
-                } else {
-                    let msg = PlayerMessage::system("Recipient not found", player_id);
-                    msg.send(room_manager.player_connections());
-                }
+            (MessageType::Private { recipient, content, .. }, Some(player_id)) => {
+                room_manager.send_private_msg(content, &player_id, recipient.clone());
             },
             (MessageType::System(content), Some(player_id)) => {
-                let room_manager = self.state.read().await;
-                let msg = PlayerMessage::system(content.to_string(), player_id);
-                msg.send(room_manager.player_connections());
+                room_manager.send_system_msg(content, player_id);
             },
             (MessageType::Connect { .. }, Some(_)) => {
                 responses.push(WsMessage::Text(Utf8Bytes::from("Already connected")));

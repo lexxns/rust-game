@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use tokio::io::AsyncBufReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 use crate::message_generator::{parse_command, IntoWebSocketMessage};
-use shared::message_utils::{display_text, MessageType};
+use shared::message_utils::{display_text, IncomingMessage, MessageType};
 use clap::Parser;
 
 
@@ -44,49 +44,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let receive_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = read.next().await {
             if let WsMessage::Text(text) = msg {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    // Check if this is our own message
-                    let username = my_username.lock().unwrap().clone();
-                    let sender_name = value.get("sender_name")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("");
 
-                    let is_own_message = !username.is_empty() && sender_name == username;
+                // Try parsing the incoming message
+                if let Ok(message) = serde_json::from_str::<IncomingMessage>(&text) {
+                    // TODO: use message id / sender id to figure this out
+                    let is_own_message = match &message.message_type {
+                        MessageType::Room { sender, .. } |
+                        MessageType::Private { sender, .. } => {
+                            if let Some(sender_name) = sender {  // Handle optional sender
+                                let username = my_username.lock().unwrap().clone();
+                                !username.is_empty() && sender_name == &username
+                            } else {
+                                false
+                            }
+                        }
+                        _ => false  // System messages and Connect messages aren't "owned"
+                    };
 
-                    match value.get("type").and_then(|t| t.as_str()) {
-                        Some("Room") => {
-                            if let Some(content) = value.get("payload").and_then(|p| p.as_str()) {
-                                let c = content;
-                                display_text!("Room", c);
+                    match message.message_type {
+                        MessageType::Room { sender, content } => {
+                            if is_own_message {
+                                display_text!("Room", &content, true)
+                            } else {
+                                let s = sender.unwrap();
+                                let c = format!("{s}: {content}");
+                                display_text!("Room", &c)
+                            };
+                        }
+                        MessageType::Private { sender, recipient, content } => {
+                            if is_own_message {
+                                display_text!("Private", &content, true, &recipient)
+                            } else {
+                                let s = sender.unwrap();
+                                let c = format!("{s}: {content}");
+                                display_text!("Private", &c)
                             }
                         }
-                        Some("Private") => {
-                            if let Some(content) = value.get("payload").and_then(|p| p.get("content")).and_then(|c| c.as_str()) {
-                                if is_own_message {
-                                    // Get recipient from last sent message
-                                    if let Some((_, Some(recipient))) = last_sent_clone.lock().unwrap().as_ref() {
-                                        display_text!("Private", content, true, recipient);
-                                    } else {
-                                        display_text!("Private", content, true);
-                                    }
-                                } else {
-                                    display_text!("Private", content);
-                                }
-                            }
+                        MessageType::System(content) => {
+                            display_text!("System", &content)
                         }
-                        Some("System") => {
-                            if let Some(content) = value.get("payload").and_then(|p| p.as_str()) {
-                                display_text!("System", content);
-                            }
-                        }
-                        _ => {
-                            println!("Unknown message: {}", text);
+                        MessageType::Connect { name: _ } => {
+                            // Don't need to do anything here
                         }
                     }
                 } else {
-                    display_text!("System", text);
-                }
-            }
+                    println!("Failed to parse message: {}", text);
+                }            }
         }
     });
 
