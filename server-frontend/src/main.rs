@@ -1,129 +1,111 @@
-mod message_generator;
+use bevy::{
+    input::keyboard::{Key, KeyboardInput},
+    prelude::*,
+};
+use std::mem;
 
-use futures_util::{SinkExt, StreamExt};
-use std::io::{self, Write};
-use tokio::io::AsyncBufReadExt;
-use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use crate::message_generator::{parse_command, IntoWebSocketMessage};
-use shared::message_utils::{display_text, IncomingMessage, MessageType};
-use clap::Parser;
-
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(long)]
-    name: String,
+#[derive(Component)]
+struct ChatHistory {
+    messages: Vec<String>,
+    max_messages: usize,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let url = "ws://127.0.0.1:8080";
-    let args = Args::parse();
-    let (ws_stream, _) = connect_async(url).await?;
-    println!("WebSocket connected");
-    println!("Commands: /room <msg>, /private <name> <msg>");
+#[derive(Component)]
+struct ChatInput;
 
-    let (mut write, mut read) = ws_stream.split();
+#[derive(Component)]
+struct ChatHistoryText;
 
-    // Track our username and last sent message
-    let my_username = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup_scene)
+        .add_systems(Update, (listen_keyboard_input_events, update_chat_display))
+        .run();
+}
 
-    // Store last sent message type and recipient for displaying our own messages
-    let last_sent = std::sync::Arc::new(std::sync::Mutex::new(None::<(String, Option<String>)>));
-    let last_sent_clone = last_sent.clone();
+fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn(Camera2d);
+    let font = asset_server.load("fonts/FiraMono-Medium.ttf");
 
-    *my_username.lock().unwrap() = args.name;
-    if let Ok(connect_msg) = MessageType::new_connect(String::from(my_username.lock().unwrap().clone())) {
-        write.send(connect_msg.into_ws_message().unwrap()).await?;
-    } else {
-        panic!("Failed to connect to the server - Invalid Username");
-    }
+    // Chat history text display
+    commands.spawn((
+        Text2d::new(""),
+        TextFont {
+            font: font.clone(),
+            font_size: 24.0,
+            ..default()
+        },
+        Transform::from_xyz(10.0, 120.0, 0.0),
+        ChatHistoryText,
+    ));
 
+    // Chat input text
+    commands.spawn((
+        Text2d::new(""),
+        TextFont {
+            font,
+            font_size: 24.0,
+            ..default()
+        },
+        Transform::from_xyz(10.0, 10.0, 0.0),
+        ChatInput,
+    ));
 
-    let receive_task = tokio::spawn(async move {
-        while let Some(Ok(msg)) = read.next().await {
-            if let WsMessage::Text(text) = msg {
-
-                // Try parsing the incoming message
-                if let Ok(message) = serde_json::from_str::<IncomingMessage>(&text) {
-                    // TODO: use message id / sender id to figure this out
-                    let is_own_message = match &message.message_type {
-                        MessageType::Room { sender, .. } |
-                        MessageType::Private { sender, .. } => {
-                            if let Some(sender_name) = sender {  // Handle optional sender
-                                let username = my_username.lock().unwrap().clone();
-                                !username.is_empty() && sender_name == &username
-                            } else {
-                                false
-                            }
-                        }
-                        _ => false  // System messages and Connect messages aren't "owned"
-                    };
-
-                    match message.message_type {
-                        MessageType::Room { sender, content } => {
-                            if is_own_message {
-                                display_text!("Room", &content, true)
-                            } else {
-                                let s = sender.unwrap();
-                                let c = format!("{s}: {content}");
-                                display_text!("Room", &c)
-                            };
-                        }
-                        MessageType::Private { sender, recipient, content } => {
-                            if is_own_message {
-                                display_text!("Private", &content, true, &recipient)
-                            } else {
-                                let s = sender.unwrap();
-                                let c = format!("{s}: {content}");
-                                display_text!("Private", &c)
-                            }
-                        }
-                        MessageType::System(content) => {
-                            display_text!("System", &content)
-                        }
-                        MessageType::Connect { name: _ } => {
-                            // Don't need to do anything here
-                        }
-                    }
-                } else {
-                    println!("Failed to parse message: {}", text);
-                }            }
-        }
+    // Initialize chat history
+    commands.spawn(ChatHistory {
+        messages: Vec::new(),
+        max_messages: 10, // Keep last 10 messages
     });
+}
 
-    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
-    let mut line = String::new();
+fn listen_keyboard_input_events(
+    mut events: EventReader<KeyboardInput>,
+    mut chat_input: Query<&mut Text2d, With<ChatInput>>,
+    mut chat_history: Query<&mut ChatHistory>,
+) {
+    let mut input_text = chat_input.single_mut();
+    let mut history = chat_history.single_mut();
 
-    loop {
-        print!("> ");
-        io::stdout().flush()?;
-        line.clear();
-
-        if stdin.read_line(&mut line).await? == 0 {
-            break;
+    for event in events.read() {
+        if !event.state.is_pressed() {
+            continue;
         }
 
-        // Parse command and update last sent message info
-        if line.starts_with("/private") || line.starts_with("/pm") {
-            if let Some(content) = line.strip_prefix(if line.starts_with("/pm") { "/pm" } else { "/private" }) {
-                if let Some((recipient, _)) = content.trim().split_once(' ') {
-                    *last_sent.lock().unwrap() = Some(("Private".to_string(), Some(recipient.to_string())));
+        match &event.logical_key {
+            Key::Enter => {
+                if input_text.is_empty() {
+                    continue;
+                }
+                let message = mem::take(&mut **input_text);
+
+                // Add to history
+                history.messages.push(message);
+                if history.messages.len() > history.max_messages {
+                    history.messages.remove(0);
                 }
             }
-        } else if !line.starts_with('/') {
-            *last_sent.lock().unwrap() = Some(("Room".to_string(), None));
-        }
-
-        match parse_command(&line) {
-            Ok(message) => {
-                write.send(message).await?;
+            Key::Space => {
+                input_text.push(' ');
             }
-            Err(e) => eprintln!("Error: {}", e),
+            Key::Backspace => {
+                input_text.pop();
+            }
+            Key::Character(character) => {
+                input_text.push_str(character);
+            }
+            _ => continue,
         }
     }
+}
 
-    receive_task.abort();
-    Ok(())
+fn update_chat_display(
+    chat_history: Query<&ChatHistory>,
+    mut history_text: Query<&mut Text2d, With<ChatHistoryText>>,
+) {
+    let history = chat_history.single();
+    let mut display_text = history_text.single_mut();
+
+    // Update the display with all messages
+    **display_text = history.messages.join("\n");
 }
