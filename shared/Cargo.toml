@@ -7,3 +7,4 @@ edition = "2021"
 serde = { version = "1.0", features = ["derive"] }
 tokio = "1.43.0"
 tokio-tungstenite = "0.26.1"
+bevy_simplenet = { workspace = true }

@@ -1,9 +1,42 @@
 use std::collections::HashSet;
+use bevy_simplenet::ChannelPack;
 use tokio_tungstenite::tungstenite::{Message as WsMessage, Utf8Bytes};
 use uuid::Uuid;
 use shared::message_utils::{IncomingMessage, MessageType, PlayerConnection};
 use crate::room::RoomManager;
 use serde::de::Error as SerdeError;
+use serde::{Deserialize, Serialize};
+
+/// Clients send these when connecting to the server.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TestConnectMsg(pub String);
+
+/// Clients can send these at any time.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TestClientMsg(pub u64);
+
+/// Client requests are special messages that expect a response from the server.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TestClientRequest(pub u64);
+
+/// Servers can send these at any time.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TestServerMsg(pub u64);
+
+/// Servers send these in response to client requests.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TestServerResponse(pub u64);
+
+#[derive(Debug, Clone)]
+pub struct TestChannel;
+impl ChannelPack for TestChannel
+{
+    type ConnectMsg = TestConnectMsg;
+    type ServerMsg = TestServerMsg;
+    type ServerResponse = TestServerResponse;
+    type ClientMsg = TestClientMsg;
+    type ClientRequest = TestClientRequest;
+}
 
 pub trait CommsMessage {
     fn text(&self) -> &Utf8Bytes;

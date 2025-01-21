@@ -1,0 +1,12 @@
+[package]
+name = "server-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared = { path = "../shared" }
+serde = "1.0.217"
+bevy.workspace = true
+bevy_cobweb.workspace = true
+enfync.workspace = true
+bevy_simplenet = { workspace = true, features = ["server", "bevy"] }

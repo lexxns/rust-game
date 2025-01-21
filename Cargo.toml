@@ -1,13 +1,24 @@
 [workspace]
 members = [
     "shared",
-    "server-backend",
-    "server-frontend",
+    "server",
+    "client",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+bevy         = { version = "0.15.1", default-features = false }
+bevy_cobweb  = { version = "0.13" }
+enfync       = { version = "0.1" }
+bevy_simplenet = { version = "0.14.2", default-features = false }
 
 [profile.dev]
 opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+lto           = true
+strip         = true    #minimize binary size with symbol stripping
+codegen-units = 1       #maximize performance
