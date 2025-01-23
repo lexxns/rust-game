@@ -1,287 +1,22 @@
-
-//third-party shortcuts
 use bevy::prelude::*;
 use bevy::window::WindowTheme;
 use bevy::winit::{UpdateMode, WinitSettings};
 use bevy_cobweb::prelude::*;
 use bevy_cobweb_ui::prelude::*;
-
-//standard shortcuts
-use std::fmt::Write;
 use wasm_timer::{SystemTime, UNIX_EPOCH};
-use shared::api::API_VERSION;
-use shared::channel::{ChatChannel, ClientRequest, ServerMsg};
-//-------------------------------------------------------------------------------------------------------------------
 
-type DemoClient      = bevy_simplenet::Client<ChatChannel>;
-type DemoClientEvent = bevy_simplenet::ClientEventFrom<ChatChannel>;
+mod state;
+mod ui;
+mod client;
 
-fn client_factory() -> bevy_simplenet::ClientFactory<ChatChannel>
-{
-    bevy_simplenet::ClientFactory::<ChatChannel>::new(API_VERSION)
-}
+use state::{ConnectionStatus, ButtonOwner, PendingSelect};
+use ui::{build_ui, setup};
+use client::{client_factory, handle_client_events};
 
-//-------------------------------------------------------------------------------------------------------------------
-
-#[derive(ReactResource, Copy, Clone, Eq, PartialEq, Debug)]
-enum ConnectionStatus
-{
-    Connecting,
-    Connected,
-    Dead,
-}
-
-impl ConnectionStatus
-{
-    fn to_string(&self) -> &'static str
-    {
-        match *self
-        {
-            ConnectionStatus::Connecting => "connecting...",
-            ConnectionStatus::Connected  => "connected",
-            ConnectionStatus::Dead       => "DEAD",
-        }
-    }
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-#[derive(ReactResource, Default)]
-struct ButtonOwner
-{
-    server_authoritative_id : Option<u128>,
-    predicted_id            : Option<u128>
-}
-
-impl ButtonOwner
-{
-    fn display_id(&self) -> Option<u128>
-    {
-        if self.predicted_id.is_some() { return self.predicted_id }
-        self.server_authoritative_id
-    }
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-#[derive(ReactResource)]
-struct PendingSelect(Option<bevy_simplenet::RequestSignal>);
-
-impl PendingSelect
-{
-    fn equals_request(&self, request_id: u64) -> bool
-    {
-        let Some(signal) = &self.0 else { return false; };
-        signal.id() == request_id
-    }
-
-    fn is_predicted(&self) -> bool
-    {
-        self.0.is_some()
-    }
-}
-
-impl Default for PendingSelect { fn default() -> Self { Self(None) } }
-
-//-------------------------------------------------------------------------------------------------------------------
-
-/// Event broadcasted for when the button should be selected.
-struct SelectButton;
-
-/// Event broadcasted for when the button should be deselected.
-struct DeselectButton;
-
-/// Event broadcasted for when the input chat is selected.
-struct ChatInputSelected;
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn handle_button_select(
-    mut c: Commands,
-    client: Res<DemoClient>,
-    status: ReactRes<ConnectionStatus>,
-    mut pending_select: ReactResMut<PendingSelect>,
-    mut owner: ReactResMut<ButtonOwner>
-)
-{
-    // if not connected then we force-deselect
-    if *status != ConnectionStatus::Connected
-    {
-        c.react().broadcast(DeselectButton);
-        return;
-    }
-
-    // send select request
-    let signal = client.request(ClientRequest::Select);
-
-    // save the predicted input
-    pending_select.get_mut(&mut c).0   = Some(signal);
-    owner.get_mut(&mut c).predicted_id = Some(client.id());
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn handle_button_deselect(
-    mut c: Commands,
-    mut pending_select: ReactResMut<PendingSelect>,
-    mut owner: ReactResMut<ButtonOwner>
-)
-{
-    pending_select.get_mut(&mut c).0   = None;
-    owner.get_mut(&mut c).predicted_id = None;
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn set_new_server_state(
-    In(server_state) : In<Option<u128>>,
-    mut c            : Commands,
-    client           : Res<DemoClient>,
-    pending_select   : ReactRes<PendingSelect>,
-    mut owner        : ReactResMut<ButtonOwner>
-){
-    // update server state
-    owner.get_mut(&mut c).server_authoritative_id = server_state;
-
-    // check if we are predicted
-    if pending_select.is_predicted() { return; }
-
-    // if not predicted and server state doesn't match our id, deselect
-    if server_state != Some(client.id())
-    {
-        c.react().broadcast(DeselectButton);
-    }
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn build_ui(mut c: Commands, mut s: ResMut<SceneLoader>)
-{
-    let file = SceneFile::new("example.client");
-    c.ui_root().load_scene_and_edit(&file + "game_container", &mut s, |l| {
-        l.edit("status", |l| {
-            l.update_on(resource_mutation::<ConnectionStatus>(),
-                        |id: UpdateId, mut e: TextEditor, status: ReactRes<ConnectionStatus>| {
-                            write_text!(e, *id, "Status: {}", status.to_string());
-                        }
-            );
-        }).edit("owner", |l| {
-                l.update_on(resource_mutation::<ButtonOwner>(),
-                            |id: UpdateId, mut e: TextEditor, owner: ReactRes<ButtonOwner>| {
-                                let _ = match owner.display_id()
-                                {
-                                    Some(display_id) => write_text!(e, *id, "Owner: {}", display_id % 1_000_000u128),
-                                    None => write_text!(e, *id, "No owner"),
-                                };
-                            }
-                );
-            }).edit("button", |l| {
-            let button = l.id();
-            l.on_pressed(move |mut c: Commands| {
-                c.react().entity_event(button, Select);
-                c.react().broadcast(SelectButton);
-            })
-                .update_on(broadcast::<DeselectButton>(), |id: UpdateId, mut c: Commands| {
-                    c.react().entity_event(*id, Deselect);
-                })
-                .on_select(|| println!("selected"))
-                .on_deselect(|| println!("deselected"));
-        });
-    });
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn setup(mut commands: Commands)
-{
-    // prepare 2D camera
-    commands.spawn(Camera2d::default());
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn handle_client_events(
-    mut c              : Commands,
-    mut client         : ResMut<DemoClient>,
-    mut status         : ReactResMut<ConnectionStatus>,
-    mut pending_select : ReactResMut<PendingSelect>,
-    mut owner          : ReactResMut<ButtonOwner>
-){
-    let mut next_status = *status;
-
-    while let Some(client_event) = client.next()
-    {
-        match client_event
-        {
-            DemoClientEvent::Report(connection_report) => match connection_report
-            {
-                bevy_simplenet::ClientReport::Connected         => next_status = ConnectionStatus::Connected,
-                bevy_simplenet::ClientReport::Disconnected      |
-                bevy_simplenet::ClientReport::ClosedByServer(_) |
-                bevy_simplenet::ClientReport::ClosedBySelf      => next_status = ConnectionStatus::Connecting,
-                bevy_simplenet::ClientReport::IsDead(aborted_reqs) =>
-                    {
-                        for aborted_req in aborted_reqs
-                        {
-                            if !pending_select.equals_request(aborted_req) { continue; }
-
-                            // an error occurred, roll back the predicted input
-                            c.react().broadcast(DeselectButton);
-                        }
-                        next_status = ConnectionStatus::Dead;
-                    }
-            }
-            DemoClientEvent::Msg(message) => match message
-            {
-                ServerMsg::Current(new_id) =>
-                    {
-                        // reset current state
-                        c.syscall(new_id, set_new_server_state);
-                    }
-                _ => {}
-            }
-            DemoClientEvent::Ack(request_id) =>
-                {
-                    if !pending_select.equals_request(request_id) { continue; }
-
-                    // merge predicted input
-                    let owner = owner.get_mut(&mut c);
-                    owner.server_authoritative_id = owner.predicted_id;
-                    owner.predicted_id = None;
-                    pending_select.get_mut(&mut c).0 = None;
-                }
-            DemoClientEvent::Reject(request_id) =>
-                {
-                    if !pending_select.equals_request(request_id) { continue; }
-
-                    // roll back predicted input
-                    c.react().broadcast(DeselectButton);
-                }
-            DemoClientEvent::Response((), request_id) |
-            DemoClientEvent::SendFailed(request_id)    |
-            DemoClientEvent::ResponseLost(request_id)  =>
-                {
-                    if !pending_select.equals_request(request_id) { continue; }
-
-                    // an error occurred, roll back the predicted input
-                    c.react().broadcast(DeselectButton);
-                }
-        }
-    }
-
-    if next_status != *status {
-        *status.get_mut(&mut c) = next_status;
-    }
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-
-fn main()
-{
-    // simplenet client
-    // - we use a baked-in address so you can close and reopen the server to test clients being disconnected
+fn main() {
+    // simplenet client setup
     let client = client_factory().new_client(
-        enfync::builtin::Handle::default(),  //automatically selects native/WASM runtime
+        enfync::builtin::Handle::default(),
         url::Url::parse("ws://127.0.0.1:48888/ws").unwrap(),
         bevy_simplenet::AuthRequest::None{
             client_id: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
@@ -325,7 +60,7 @@ fn main()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(LoadState::Done), build_ui)
         .add_systems(Update, handle_client_events)
-        .add_reactor(broadcast::<SelectButton>(), handle_button_select)
-        .add_reactor(broadcast::<DeselectButton>(), handle_button_deselect)
+        .add_reactor(broadcast::<ui::SelectButton>(), ui::handle_button_select)
+        .add_reactor(broadcast::<ui::DeselectButton>(), ui::handle_button_deselect)
         .run();
 }
