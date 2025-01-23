@@ -6,12 +6,6 @@ members = [
 ]
 resolver = "2"
 
-[workspace.dependencies]
-bevy         = { version = "0.15.1", default-features = false }
-bevy_cobweb  = { version = "0.13" }
-enfync       = { version = "0.1" }
-bevy_simplenet = { version = "0.14.2", default-features = false }
-
 [profile.dev]
 opt-level = 1
 

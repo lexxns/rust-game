@@ -1,21 +1,24 @@
+
+//third-party shortcuts
 use bevy::prelude::*;
 use bevy::window::WindowTheme;
 use bevy::winit::{UpdateMode, WinitSettings};
 use bevy_cobweb::prelude::*;
 use bevy_cobweb_ui::prelude::*;
+
+//standard shortcuts
 use std::fmt::Write;
-use bevy_cobweb_ui::loading::SceneLoader;
-use shared::channel::*;
 use wasm_timer::{SystemTime, UNIX_EPOCH};
 use shared::api::API_VERSION;
+use shared::channel::{ChatChannel, ClientRequest, ServerMsg};
 //-------------------------------------------------------------------------------------------------------------------
 
-type DemoClient      = bevy_simplenet::Client<DemoChannel>;
-type DemoClientEvent = bevy_simplenet::ClientEventFrom<DemoChannel>;
+type DemoClient      = bevy_simplenet::Client<ChatChannel>;
+type DemoClientEvent = bevy_simplenet::ClientEventFrom<ChatChannel>;
 
-fn client_factory() -> bevy_simplenet::ClientFactory<DemoChannel>
+fn client_factory() -> bevy_simplenet::ClientFactory<ChatChannel>
 {
-    bevy_simplenet::ClientFactory::<DemoChannel>::new(API_VERSION)
+    bevy_simplenet::ClientFactory::<ChatChannel>::new(API_VERSION)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -88,6 +91,9 @@ struct SelectButton;
 /// Event broadcasted for when the button should be deselected.
 struct DeselectButton;
 
+/// Event broadcasted for when the input chat is selected.
+struct ChatInputSelected;
+
 //-------------------------------------------------------------------------------------------------------------------
 
 fn handle_button_select(
@@ -106,7 +112,7 @@ fn handle_button_select(
     }
 
     // send select request
-    let signal = client.request(DemoClientRequest::Select);
+    let signal = client.request(ClientRequest::Select);
 
     // save the predicted input
     pending_select.get_mut(&mut c).0   = Some(signal);
@@ -152,15 +158,14 @@ fn set_new_server_state(
 fn build_ui(mut c: Commands, mut s: ResMut<SceneLoader>)
 {
     let file = SceneFile::new("example.client");
-    c.ui_root().load_scene_and_edit(&file + "scene", &mut s, |l| {
+    c.ui_root().load_scene_and_edit(&file + "game_container", &mut s, |l| {
         l.edit("status", |l| {
             l.update_on(resource_mutation::<ConnectionStatus>(),
                         |id: UpdateId, mut e: TextEditor, status: ReactRes<ConnectionStatus>| {
                             write_text!(e, *id, "Status: {}", status.to_string());
                         }
             );
-        })
-            .edit("owner", |l| {
+        }).edit("owner", |l| {
                 l.update_on(resource_mutation::<ButtonOwner>(),
                             |id: UpdateId, mut e: TextEditor, owner: ReactRes<ButtonOwner>| {
                                 let _ = match owner.display_id()
@@ -170,9 +175,7 @@ fn build_ui(mut c: Commands, mut s: ResMut<SceneLoader>)
                                 };
                             }
                 );
-            });
-
-        l.load_scene_and_edit(file + "button", |l| {
+            }).edit("button", |l| {
             let button = l.id();
             l.on_pressed(move |mut c: Commands| {
                 c.react().entity_event(button, Select);
@@ -230,11 +233,12 @@ fn handle_client_events(
             }
             DemoClientEvent::Msg(message) => match message
             {
-                DemoServerMsg::Current(new_id) =>
+                ServerMsg::Current(new_id) =>
                     {
                         // reset current state
                         c.syscall(new_id, set_new_server_state);
                     }
+                _ => {}
             }
             DemoClientEvent::Ack(request_id) =>
                 {
@@ -274,13 +278,6 @@ fn handle_client_events(
 
 fn main()
 {
-    // setup wasm tracing
-    #[cfg(target_family = "wasm")]
-    {
-        //console_error_panic_hook::set_once();
-        //tracing_wasm::set_as_global_default();
-    }
-
     // simplenet client
     // - we use a baked-in address so you can close and reopen the server to test clients being disconnected
     let client = client_factory().new_client(
@@ -332,5 +329,3 @@ fn main()
         .add_reactor(broadcast::<DeselectButton>(), handle_button_deselect)
         .run();
 }
-
-//-------------------------------------------------------------------------------------------------------------------
