@@ -11,7 +11,7 @@ self as example.client
         AbsoluteNode{top:5px right:9px bottom:Auto left:Auto}
         TextLine
 
-    "owner"
+    "turn_player"
         FlexNode{margin:{bottom:25px}}
         TextLine
 
@@ -21,6 +21,13 @@ self as example.client
             {idle:Hsla{hue:190 saturation:0.25 lightness:0.45 alpha:1}}
             {state:[Selected] idle:Hsla{hue:125 saturation:0.4 lightness:0.3 alpha:1}}
         ]
+        TextLine{
+            text:""
+            font:{family:"Fira Sans" width:Normal style:Normal weight:Medium}
+            size:16
+            linebreak:WordBoundary
+            justify:Center
+        }
 
 "chat_container"
     AbsoluteNode{left:20px bottom:20px width:400px height:500px}

@@ -12,3 +12,4 @@ bevy_cobweb           = { version = "0.13" }
 bevy_simplenet = { version = "0.14.2", features = ["server", "bevy"] }
 tracing               = { version = "0.1" }
 tracing-subscriber    = { version = "0.3" }
+rand = "0.8.5"

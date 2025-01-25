@@ -8,8 +8,9 @@ use wasm_timer::{SystemTime, UNIX_EPOCH};
 mod state;
 mod ui;
 mod client;
+mod player;
 
-use state::{ConnectionStatus, ButtonOwner, PendingSelect};
+use state::{ConnectionStatus, TurnPlayer, EndTurn};
 use ui::{build_ui, setup};
 use client::{client_factory, handle_client_events};
 
@@ -55,8 +56,8 @@ fn main() {
         .load("main.cob")
         .insert_resource(client)
         .insert_react_resource(ConnectionStatus::Connecting)
-        .init_react_resource::<ButtonOwner>()
-        .init_react_resource::<PendingSelect>()
+        .init_react_resource::<TurnPlayer>()
+        .init_react_resource::<EndTurn>()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(LoadState::Done), build_ui)
         .add_systems(Update, handle_client_events)

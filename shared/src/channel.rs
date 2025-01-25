@@ -20,7 +20,7 @@ pub enum MessageType {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ServerMsg
 {
-    /// Current owner.
+    /// Turn Player.
     Current(Option<u128>),
     /// Chat message from server
     Chat(MessageType)
@@ -28,16 +28,13 @@ pub enum ServerMsg
 
 //-------------------------------------------------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum ClientRequest
-{
-    /// Select the button.
-    ///
-    /// Will be acked by the server.
-    Select,
-    /// Send a chat message
-    Chat(MessageType)
-}
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    pub enum ClientRequest
+    {
+        /// Send a chat message
+        Chat(MessageType),
+        EndTurn,
+    }
 
 //-------------------------------------------------------------------------------------------------------------------
 

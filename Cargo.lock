@@ -4892,6 +4892,7 @@ dependencies = [
  "bevy_cobweb",
  "bevy_simplenet",
  "enfync",
+ "rand",
  "serde",
  "shared",
  "tracing",

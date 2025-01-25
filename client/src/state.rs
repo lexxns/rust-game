@@ -1,4 +1,5 @@
 use bevy_cobweb::prelude::*;
+use crate::client::{Client};
 
 #[derive(ReactResource, Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ConnectionStatus {
@@ -18,22 +19,26 @@ impl ConnectionStatus {
 }
 
 #[derive(ReactResource, Default)]
-pub struct ButtonOwner {
-    pub server_authoritative_id: Option<u128>,
-    pub predicted_id: Option<u128>
+pub struct TurnPlayer {
+    pub server_determined_player_id: Option<u128>,
+    pub predicted_player_id: Option<u128>
 }
 
-impl ButtonOwner {
+impl TurnPlayer {
     pub fn display_id(&self) -> Option<u128> {
-        if self.predicted_id.is_some() { return self.predicted_id }
-        self.server_authoritative_id
+        if self.predicted_player_id.is_some() { return self.predicted_player_id }
+        self.server_determined_player_id
+    }
+
+    pub fn is_current_turn(&self, client: &Client) -> bool {
+        self.display_id().map_or(false, |id| id == client.id())
     }
 }
 
 #[derive(ReactResource)]
-pub struct PendingSelect(pub Option<bevy_simplenet::RequestSignal>);
+pub struct EndTurn(pub Option<bevy_simplenet::RequestSignal>);
 
-impl PendingSelect {
+impl EndTurn {
     pub fn equals_request(&self, request_id: u64) -> bool {
         let Some(signal) = &self.0 else { return false; };
         signal.id() == request_id
@@ -44,4 +49,4 @@ impl PendingSelect {
     }
 }
 
-impl Default for PendingSelect { fn default() -> Self { Self(None) } }
+impl Default for EndTurn { fn default() -> Self { Self(None) } }

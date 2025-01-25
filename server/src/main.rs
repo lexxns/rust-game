@@ -5,6 +5,7 @@ use bevy_cobweb::prelude::*;
 use std::collections::{HashMap, HashSet};
 use bevy::log::tracing_subscriber;
 use bevy::utils::tracing;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use shared::api::API_VERSION;
 
@@ -18,7 +19,45 @@ fn server_factory() -> bevy_simplenet::ServerFactory<ChatChannel> {
 #[derive(Default)]
 struct Room {
     players: HashSet<u128>,
-    button_state: Option<u128>,
+    current_turn: Option<u128>,
+}
+
+impl Room {
+    fn get_opponent(&self, player_id: u128) -> Option<u128> {
+        self.players.iter()
+            .find(|&&p| p != player_id)
+            .copied()
+    }
+
+    fn is_ready_to_start(&self) -> bool {
+        self.players.len() == 2 && self.current_turn.is_none()
+    }
+
+    fn select_initial_player(&mut self) -> Option<u128> {
+        if self.players.len() != 2 {
+            return None;
+        }
+
+        let players: Vec<u128> = self.players.iter().copied().collect();
+        let first_player = if rand::thread_rng().gen_bool(0.5) {
+            players[0]
+        } else {
+            players[1]
+        };
+
+        self.current_turn = Some(first_player);
+        Some(first_player)
+    }
+
+    fn switch_turn(&mut self) -> Option<u128> {
+        if let Some(current) = self.current_turn {
+            if let Some(opponent) = self.get_opponent(current) {
+                self.current_turn = Some(opponent);
+                return Some(opponent);
+            }
+        }
+        None
+    }
 }
 
 #[derive(Resource, Default)]
@@ -34,11 +73,10 @@ fn send_room_state(
     server: &DemoServer,
     game_state: &GameState,
     room_id: &str,
-    button_state: Option<u128>,
 ) {
     if let Some(room) = game_state.rooms.get(room_id) {
         for &player_id in &room.players {
-            server.send(player_id, ServerMsg::Current(button_state));
+            server.send(player_id, ServerMsg::Current(room.current_turn));
         }
     }
 }
@@ -59,20 +97,20 @@ fn handle_server_events(
                     tracing::info!("client {:?} connected", client_id);
                     let room_id = find_or_create_room(&mut game_state);
 
-                    // Get current room state before modifying
-                    let current_state = game_state.rooms.get(&room_id)
-                        .map(|r| r.button_state)
-                        .unwrap_or(None);
-
-                    // Update room
+                    // Update room with new player
                     if let Some(room) = game_state.rooms.get_mut(&room_id) {
                         room.players.insert(client_id);
-                    }
-                    game_state.player_to_room.insert(client_id, room_id.clone());
 
-                    // Send state to new client
-                    server.send(client_id, ServerMsg::Current(current_state));
-                }
+                        // If room is now full, select first player
+                        if room.is_ready_to_start() {
+                            if let Some(first_player) = room.select_initial_player() {
+                                tracing::info!("Game starting in room {}, first player: {}", room_id, first_player);
+                                state_updates.push((room_id.clone(), Some(first_player)));
+                            }
+                        }
+                    }
+
+                    game_state.player_to_room.insert(client_id, room_id.clone());                }
                 bevy_simplenet::ServerReport::Disconnected => {
                     tracing::info!("client {:?} disconnected", client_id);
 
@@ -80,10 +118,9 @@ fn handle_server_events(
                         if let Some(room) = game_state.rooms.get_mut(&room_id) {
                             room.players.remove(&client_id);
 
-                            if room.button_state == Some(client_id) {
-                                room.button_state = None;
-                                state_updates.push((room_id.clone(), None));
-                            }
+                            // Reset room state when a player leaves
+                            room.current_turn = None;
+                            state_updates.push((room_id.clone(), None));
 
                             if room.players.is_empty() {
                                 rooms_to_remove.push(room_id.clone());
@@ -93,21 +130,34 @@ fn handle_server_events(
                 }
             },
             DemoServerEvent::Msg(()) => continue,
-            DemoServerEvent::Request(token, request) => match request {
-                ClientRequest::Select => {
-                    tracing::info!("received {:?} from client {:?}", request, client_id);
-                    server.ack(token);
+            DemoServerEvent::Request(token, request) => {
+                tracing::info!("Received request: {:?}", request);
+                match request {
+                    ClientRequest::EndTurn => {
+                        tracing::info!("received end turn from client {:?}", client_id);
 
-                    if let Some(room_id) = game_state.player_to_room.get(&client_id).cloned() {
-                        if let Some(room) = game_state.rooms.get_mut(&room_id) {
-                            room.button_state = Some(client_id);
-                            state_updates.push((room_id, Some(client_id)));
+                        if let Some(room_id) = game_state.player_to_room.get(&client_id).cloned() {
+                            if let Some(room) = game_state.rooms.get_mut(&room_id) {
+                                // Verify it's actually this player's turn
+                                if room.current_turn == Some(client_id) {
+                                    if let Some(next_player) = room.switch_turn() {
+                                        server.ack(token);
+                                        state_updates.push((room_id, Some(next_player)));
+                                        tracing::info!("Turn switched to player {}", next_player);
+                                    }
+                                } else {
+                                    server.reject(token);
+                                    tracing::warn!("Player {} tried to end turn when it wasn't their turn", client_id);
+                                }
+                            }
                         }
                     }
-                }
-                ClientRequest::Chat(msg_type) => {
-                    tracing::info!("received {:?} from client {:?}", msg_type, client_id);
-                    server.ack(token);
+                    ClientRequest::Chat(msg_type) => {
+                        tracing::info!("received {:?} from client {:?}", msg_type, client_id);
+                        server.ack(token);
+                    }
+
+                    _ => {}
                 }
             }
         }
@@ -170,7 +220,7 @@ fn main() {
                           game_state: Res<GameState>,
                           button_states: ReactRes<ButtonStates>| {
                              for (room_id, state) in &button_states.0 {
-                                 send_room_state(&server, &game_state, room_id, *state);
+                                 send_room_state(&server, &game_state, room_id);
                              }
                          });
     });
