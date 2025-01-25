@@ -22,6 +22,4 @@ impl GameState {
         self.rooms.insert(room_id.clone(), Room::default());
         room_id
     }
-
-    // Add other game state management methods...
 }

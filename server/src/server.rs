@@ -3,7 +3,7 @@ use shared::api::API_VERSION;
 use bevy_simplenet::{ServerFactory, AcceptorConfig, Authenticator, ServerConfig};
 use shared::channel::ChatChannel;
 
-pub fn setup_server() -> DemoServer {
+pub fn setup_server() -> Server {
     ServerFactory::<ChatChannel>::new(API_VERSION)
         .new_server(
             enfync::builtin::native::TokioHandle::default(),

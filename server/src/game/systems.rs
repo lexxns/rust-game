@@ -4,12 +4,14 @@ use bevy_simplenet::ServerEvent::Report;
 use shared::channel::{ClientRequest, ServerMsg};
 use crate::types::*;
 use crate::game::GameState;
+use crate::game::turn_timer::{cancel_turn_timer, ActiveTurnTimers, TimerCancellation};
 
 pub fn handle_server_events(
     mut commands: Commands,
-    mut server: ResMut<DemoServer>,
+    mut server: ResMut<Server>,
     mut game_state: ResMut<GameState>,
-    mut button_states: ReactResMut<ButtonStates>,
+    mut player_turns: ReactResMut<PlayerTurns>,
+    mut timer_cancellation: TimerCancellation,
 ) {
     let mut state_updates = Vec::new();
     let mut rooms_to_remove = Vec::new();
@@ -53,8 +55,8 @@ pub fn handle_server_events(
                     }
                 }
             },
-            DemoServerEvent::Msg(()) => continue,
-            DemoServerEvent::Request(token, request) => {
+            ServerEvent::Msg(()) => continue,
+            ServerEvent::Request(token, request) => {
                 tracing::info!("Received request: {:?}", request);
                 match request {
                     ClientRequest::EndTurn => {
@@ -66,6 +68,7 @@ pub fn handle_server_events(
                                 if room.current_turn == Some(client_id) {
                                     if let Some(next_player) = room.switch_turn() {
                                         server.ack(token);
+                                        timer_cancellation.cancel_timer(&room_id);
                                         state_updates.push((room_id, Some(next_player)));
                                         tracing::info!("Turn switched to player {}", next_player);
                                     }
@@ -87,23 +90,24 @@ pub fn handle_server_events(
 
     // Apply all state updates at once
     for (room_id, state) in state_updates {
-        button_states.get_mut(&mut commands).0.insert(room_id, state);
+        player_turns.get_mut(&mut commands).0.insert(room_id, state);
     }
 
     // Remove empty rooms at the end
     for room_id in rooms_to_remove {
+        timer_cancellation.cancel_timer(&room_id);
         game_state.rooms.remove(&room_id);
-        button_states.get_mut(&mut commands).0.remove(&room_id);
+        player_turns.get_mut(&mut commands).0.remove(&room_id);
     }
 
 }
 
 pub fn setup_room_state_reaction(rc: &mut ReactCommands) {
     rc.on_persistent(
-        resource_mutation::<ButtonStates>(),
-        |server: Res<DemoServer>,
+        resource_mutation::<PlayerTurns>(),
+        |server: Res<Server>,
          game_state: Res<GameState>,
-         button_states: ReactRes<ButtonStates>| {
+         button_states: ReactRes<PlayerTurns>| {
             for (room_id, _state) in &button_states.0 {
                 send_room_state(&server, &game_state, room_id);
             }
@@ -111,8 +115,8 @@ pub fn setup_room_state_reaction(rc: &mut ReactCommands) {
     );
 }
 
-fn send_room_state(
-    server: &DemoServer,
+pub fn send_room_state(
+    server: &Server,
     game_state: &GameState,
     room_id: &str,
 ) {
