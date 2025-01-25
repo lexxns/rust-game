@@ -26,7 +26,7 @@ self as example.client
             font:{family:"Fira Sans" width:Normal style:Normal weight:Medium}
             size:16
             linebreak:WordBoundary
-            justify:Center
+            justify:Left
         }
 
 "chat_container"

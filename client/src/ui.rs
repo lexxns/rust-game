@@ -62,7 +62,7 @@ pub fn handle_button_select(
     client: Res<Client>,
     status: ReactRes<ConnectionStatus>,
     mut pending_select: ReactResMut<EndTurn>,
-    mut owner: ReactResMut<TurnPlayer>
+    owner: ReactResMut<TurnPlayer>
 ) {
     // Only allow button interaction if connected and it's the client's turn
     if *status != ConnectionStatus::Connected || !owner.is_current_turn(&client) {
