@@ -103,27 +103,14 @@ pub fn update_turn_timers(
     }
 }
 
-// Function to cancel timer when player ends turn manually
-pub fn cancel_turn_timer(
-    mut commands: Commands,
-    room_id: &str,
-    active_timers: &mut ActiveTurnTimers,
-) {
-    if let Some(&timer_entity) = active_timers.0.get(room_id) {
-        commands.entity(timer_entity).despawn();
-        active_timers.0.remove(room_id);
-        tracing::info!("Cancelled turn timer for room {}", room_id);
-    }
-}
-
 
 #[derive(SystemParam)]
-pub struct TimerCancellation<'w, 's> {
+pub struct TurnTimerHandle<'w, 's> {
     commands: Commands<'w, 's>,
     active_timers: ResMut<'w, ActiveTurnTimers>,
 }
 
-impl<'w, 's> TimerCancellation<'w, 's> {
+impl<'w, 's> TurnTimerHandle<'w, 's> {
     pub fn cancel_timer(&mut self, room_id: &str) {
         if let Some(&timer_entity) = self.active_timers.0.get(room_id) {
             self.commands.entity(timer_entity).despawn();
