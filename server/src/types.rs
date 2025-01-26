@@ -1,9 +1,4 @@
-use bevy_cobweb::prelude::*;
-use shared::channel::ChatChannel;
-use std::collections::HashMap;
+use shared::channel::GameChannel;
 
-pub type Server = bevy_simplenet::Server<ChatChannel>;
-pub type ServerEvent = bevy_simplenet::ServerEventFrom<ChatChannel>;
-
-#[derive(ReactResource, Default)]
-pub struct PlayerTurns(pub HashMap<String, Option<u128>>);
+pub type Server = bevy_simplenet::Server<GameChannel>;
+pub type ServerEvent = bevy_simplenet::ServerEventFrom<GameChannel>;

@@ -2,14 +2,15 @@ use bevy::app::*;
 use bevy::log::tracing_subscriber;
 use bevy::time::TimePlugin;
 use bevy_cobweb::prelude::ReactPlugin;
+use crate::room::room_plugin::RoomPlugin;
 use crate::server::setup_server;
-use crate::game::GamePlugin;
-use crate::game::turn_timer::{spawn_turn_timer, update_turn_timers, ActiveTurnTimers};
+use crate::server_plugin::handle_server_events;
 
 mod server;
-mod game;
-mod room;
 mod types;
+mod player_component;
+mod server_plugin;
+mod room;
 
 fn main() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -20,19 +21,14 @@ fn main() {
 
     let server = setup_server();
 
-    let mut app = App::new();
-    app.add_plugins((
-        ScheduleRunnerPlugin::run_loop(std::time::Duration::from_millis(100)),
-        ReactPlugin,
-        GamePlugin,
-        TimePlugin::default(),
-    ))
+    App::new()
+        .add_plugins((
+            ScheduleRunnerPlugin::run_loop(std::time::Duration::from_millis(100)),
+            ReactPlugin,
+            RoomPlugin,
+            TimePlugin::default(),
+        ))
         .insert_resource(server)
-        .init_resource::<ActiveTurnTimers>()
-        .add_systems(Update, (
-            spawn_turn_timer,
-            update_turn_timers,
-        ));
-
-    app.run();
+        .add_systems(Update, handle_server_events)
+        .run();
 }

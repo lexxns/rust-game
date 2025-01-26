@@ -1,15 +1,15 @@
 use bevy::prelude::*;
 use bevy_cobweb::prelude::{CommandsSyscallExt, ReactCommandsExt, ReactRes, ReactResMut};
 use shared::api::API_VERSION;
-use shared::channel::{ChatChannel, ServerMsg};
+use shared::channel::{GameChannel, ServerMsg};
 use crate::state::{ConnectionStatus, TurnPlayer, EndTurn};
 use crate::ui::DeselectButton;
 
-pub type Client = bevy_simplenet::Client<ChatChannel>;
-pub type ClientEvent = bevy_simplenet::ClientEventFrom<ChatChannel>;
+pub type Client = bevy_simplenet::Client<GameChannel>;
+pub type ClientEvent = bevy_simplenet::ClientEventFrom<GameChannel>;
 
-pub fn client_factory() -> bevy_simplenet::ClientFactory<ChatChannel> {
-    bevy_simplenet::ClientFactory::<ChatChannel>::new(API_VERSION)
+pub fn client_factory() -> bevy_simplenet::ClientFactory<GameChannel> {
+    bevy_simplenet::ClientFactory::<GameChannel>::new(API_VERSION)
 }
 
 fn set_new_server_state(

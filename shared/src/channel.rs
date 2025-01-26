@@ -39,8 +39,8 @@ pub enum ServerMsg
 //-------------------------------------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub struct ChatChannel;
-impl bevy_simplenet::ChannelPack for ChatChannel
+pub struct GameChannel;
+impl bevy_simplenet::ChannelPack for GameChannel
 {
     type ConnectMsg = ();
     type ServerMsg = ServerMsg;
