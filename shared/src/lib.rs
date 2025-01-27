@@ -1,6 +1,8 @@
 pub mod message_utils;
 pub mod channel;
 
+pub type EntityID = u128;
+
 pub mod models {
     use serde::{Deserialize, Serialize};
 

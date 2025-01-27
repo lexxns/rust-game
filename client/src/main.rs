@@ -8,7 +8,6 @@ use wasm_timer::{SystemTime, UNIX_EPOCH};
 mod state;
 mod ui;
 mod client;
-mod player;
 
 use state::{ConnectionStatus, TurnPlayer, EndTurn};
 use ui::{build_ui, setup};

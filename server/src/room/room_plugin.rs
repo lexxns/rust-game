@@ -1,7 +1,8 @@
 use bevy::prelude::*;
-use shared::channel::ServerMsg;
+use shared::channel::GameMessage;
+use crate::game::game_events::{handle_game_events, handle_next_turn, GameEvent};
 use crate::player_component::{Player, PlayerJoinEvent, PlayerLeaveEvent};
-use crate::room::room_components::{CurrentTurn, NextTurn, Players, Room, RoomState, TurnTimer};
+use crate::room::room_components::{CurrentTurn, Players, Room, RoomState, TurnTimer};
 use crate::room::room_manager::RoomManager;
 use crate::types::Server;
 
@@ -13,13 +14,15 @@ impl Plugin for RoomPlugin {
             .init_resource::<RoomManager>()
             .add_event::<PlayerJoinEvent>()
             .add_event::<PlayerLeaveEvent>()
+            .add_event::<GameEvent>()
             .add_systems(Update, (
                 handle_player_join,
                 handle_player_leave,
                 handle_room_turns,
                 update_room_timer,
                 cleanup_inactive_rooms,
-                handle_next_turn,
+                handle_game_events,
+                handle_next_turn.after(handle_game_events),
             ).chain());
     }
 }
@@ -55,7 +58,7 @@ fn handle_room_turns(
 
             // Notify players
             for &player_id in &players.set {
-                server.send(player_id, ServerMsg::Current(Some(first_player)));
+                server.send(player_id, GameMessage::CurrentTurn(Some(first_player)));
             }
         }
     }
@@ -80,7 +83,7 @@ fn update_room_timer(
 
                 // Notify players
                 for &player_id in &players.set {
-                    server.send(player_id, ServerMsg::Current(Some(next_player)));
+                    server.send(player_id, GameMessage::CurrentTurn(Some(next_player)));
                 }
             }
         }
@@ -110,28 +113,6 @@ fn cleanup_inactive_rooms(
 ) {
     for (entity, _) in rooms.iter() {
         commands.entity(entity).despawn_recursive();
-    }
-}
-
-fn handle_next_turn(
-    mut commands: Commands,
-    mut query: Query<(Entity, &Players, &mut CurrentTurn), With<NextTurn>>,
-    server: Res<Server>,
-) {
-    for (entity, players, mut current_turn) in query.iter_mut() {
-        if let Some(current_player) = current_turn.player {
-            let next_player = players.set.iter()
-                .find(|&&p| p != current_player)
-                .copied();
-
-            if let Some(next_player) = next_player {
-                current_turn.player = Some(next_player);
-                for &player_id in &players.set {
-                    server.send(player_id, ServerMsg::Current(Some(next_player)));
-                }
-            }
-        }
-        commands.entity(entity).remove::<NextTurn>();
     }
 }
 

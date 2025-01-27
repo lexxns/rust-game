@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_cobweb::prelude::{CommandsSyscallExt, ReactCommandsExt, ReactRes, ReactResMut};
 use shared::api::API_VERSION;
-use shared::channel::{GameChannel, ServerMsg};
+use shared::channel::{GameChannel, GameMessage};
 use crate::state::{ConnectionStatus, TurnPlayer, EndTurn};
 use crate::ui::DeselectButton;
 
@@ -53,7 +53,7 @@ pub fn handle_client_events(
                 }
             }
             ClientEvent::Msg(message) => match message {
-                ServerMsg::Current(new_id) => {
+                GameMessage::CurrentTurn(new_id) => {
                     c.syscall(new_id, set_new_server_state);
                 }
                 _ => {}

@@ -11,6 +11,7 @@ mod types;
 mod player_component;
 mod server_plugin;
 mod room;
+mod game;
 
 fn main() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()

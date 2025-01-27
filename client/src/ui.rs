@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_cobweb::prelude::*;
 use bevy_cobweb_ui::prelude::*;
 use std::fmt::Write;
-use shared::channel::ClientRequest;
+use shared::channel::GameMessage;
 use crate::state::{ConnectionStatus, TurnPlayer, EndTurn};
 use crate::client::Client;
 
@@ -70,7 +70,7 @@ pub fn handle_button_select(
     }
 
     // Send end turn request to server
-    let signal = client.request(ClientRequest::EndTurn);
+    let signal = client.request(GameMessage::EndTurn);
     pending_select.get_mut(&mut c).0 = Some(signal);
 }
 

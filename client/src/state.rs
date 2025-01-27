@@ -1,4 +1,5 @@
 use bevy_cobweb::prelude::*;
+use shared::EntityID;
 use crate::client::{Client};
 
 #[derive(ReactResource, Copy, Clone, Eq, PartialEq, Debug)]
@@ -20,12 +21,12 @@ impl ConnectionStatus {
 
 #[derive(ReactResource, Default)]
 pub struct TurnPlayer {
-    pub server_determined_player_id: Option<u128>,
-    pub predicted_player_id: Option<u128>
+    pub server_determined_player_id: Option<EntityID>,
+    pub predicted_player_id: Option<EntityID>
 }
 
 impl TurnPlayer {
-    pub fn display_id(&self) -> Option<u128> {
+    pub fn display_id(&self) -> Option<EntityID> {
         if self.predicted_player_id.is_some() { return self.predicted_player_id }
         self.server_determined_player_id
     }

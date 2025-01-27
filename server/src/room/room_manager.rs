@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use std::collections::HashSet;
 use std::time::Duration;
+use crate::game::game_events::{GameState, GameStateComponent};
 use crate::room::room_components::{CurrentTurn, Players, Room, RoomState, TurnTimer};
 
 #[derive(Resource)]
@@ -44,6 +45,11 @@ impl RoomManager {
                 RoomState {
                     is_active: true,
                     last_update: 0.0,
+                },
+                GameStateComponent {
+                    state: GameState::Starting,
+                    deck_size: 30,
+                    discard_pile: Vec::new(),
                 },
             ))
             .id()

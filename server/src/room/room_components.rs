@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use bevy::prelude::{Component, Timer};
+use shared::EntityID;
 
 #[derive(Component)]
 pub struct Room {
@@ -8,12 +9,12 @@ pub struct Room {
 
 #[derive(Component)]
 pub struct Players {
-    pub set: HashSet<u128>
+    pub set: HashSet<EntityID>
 }
 
 #[derive(Component)]
 pub struct CurrentTurn {
-    pub player: Option<u128>
+    pub player: Option<EntityID>
 }
 
 #[derive(Component)]
