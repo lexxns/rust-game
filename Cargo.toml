@@ -3,6 +3,7 @@ members = [
     "shared",
     "server",
     "client",
+    "experiments",
 ]
 resolver = "2"
 
