@@ -334,15 +334,15 @@ pub fn gallery(mut painter: ShapePainter, seconds: f32, entries: Range<i32>) {
     }
 }
 
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(ShapePlugin::default())
-        .insert_resource(ClearColor(DIM_GRAY.into()))
-        .add_systems(Startup, setup)
-        .add_systems(Update, draw_gallery)
-        .run();
-}
+// fn main() {
+//     App::new()
+//         .add_plugins(DefaultPlugins)
+//         .add_plugins(ShapePlugin::default())
+//         .insert_resource(ClearColor(DIM_GRAY.into()))
+//         .add_systems(Startup, setup)
+//         .add_systems(Update, draw_gallery)
+//         .run();
+// }
 
 fn setup(mut commands: Commands) {
     commands.spawn((
