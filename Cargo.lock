@@ -4960,6 +4960,8 @@ dependencies = [
  "bevy_simplenet",
  "console_error_panic_hook",
  "enfync",
+ "fontdue",
+ "serde",
  "shared",
  "tracing-wasm",
  "url",
