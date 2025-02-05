@@ -5,7 +5,7 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::{
     prelude::*,
     render::{
-        render_asset::{Assets, RenderAssetUsages},
+        render_asset::{RenderAssetUsages},
         render_resource::{Extent3d, TextureDimension, TextureFormat},
     },
 };
@@ -14,7 +14,7 @@ use crate::texture::uv_debug_texture;
 
 
 #[derive(Resource, Clone, Debug)]
-struct HandLayoutParams {
+pub(crate) struct HandLayoutParams {
     count: usize,
     ideal_spacing: f32,
     spread_width: f32,
@@ -29,13 +29,13 @@ struct HandLayoutParams {
 
 // Component to mark our card entities
 #[derive(Component)]
-struct Card {
+pub struct Card {
     index: usize,
 }
 
 // Component for the card's image section
 #[derive(Component)]
-struct CardImage;
+pub struct CardImage;
 
 
 // Component for the card's text section
@@ -59,7 +59,7 @@ impl Default for HandLayoutParams {
     }
 }
 
-fn setup(
+pub fn setup_hand(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
@@ -248,7 +248,7 @@ fn create_text_texture(text: &str, font: &Font) -> Image {
 }
 
 // System to handle card count changes
-fn update_card_count(
+pub(crate) fn update_card_count(
     mut commands: Commands,
     params: Res<HandLayoutParams>,
     card_query: Query<Entity, With<Card>>,
@@ -290,7 +290,7 @@ fn update_card_count(
     }
 }
 
-fn update_card_positions(
+pub(crate) fn update_card_positions(
     params: Res<HandLayoutParams>,
     mut query: Query<(&Card, &mut Transform)>,
 ) {

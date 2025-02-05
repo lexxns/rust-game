@@ -16,6 +16,7 @@ mod texture;
 use state::{ConnectionStatus, TurnPlayer, EndTurn};
 use ui::{build_ui, setup};
 use client::{client_factory, handle_client_events};
+use crate::hand::setup_hand;
 
 #[derive(Resource)]
 struct AssetDirectory(PathBuf);
@@ -65,13 +66,18 @@ fn main() {
             ..Default::default()
         })
         .insert_resource(client)
+        .insert_resource(hand::HandLayoutParams::default())
         .insert_resource(AssetDirectory(asset_path.clone()))
         .insert_react_resource(ConnectionStatus::Connecting)
         .init_react_resource::<TurnPlayer>()
         .init_react_resource::<EndTurn>()
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup, setup_hand))
         .add_systems(OnEnter(LoadState::Done), build_ui)
-        .add_systems(Update, handle_client_events)
+        .add_systems(Update, (
+            handle_client_events,
+            hand::update_card_positions,
+            hand::update_card_count
+        ))
         .add_reactor(broadcast::<ui::SelectButton>(), ui::handle_button_select)
         .add_reactor(broadcast::<ui::DeselectButton>(), ui::handle_button_deselect)
         .load("main.cob")
