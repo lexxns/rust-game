@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy_cobweb::prelude::*;
 use bevy_cobweb_ui::prelude::*;
 use std::fmt::Write;
+use bevy::render::view::RenderLayers;
+use bevy_cobweb_ui::sickle::{UiContainerExt, UiRoot};
 use shared::channel::GameMessage;
 use crate::state::{ConnectionStatus, TurnPlayer, EndTurn};
 use crate::client::Client;
@@ -9,20 +11,56 @@ use crate::client::Client;
 pub struct SelectButton;
 pub struct DeselectButton;
 
+pub const GAME_LAYER: RenderLayers = RenderLayers::layer(1);
+pub const UI_LAYER: RenderLayers = RenderLayers::layer(2);
+
 pub fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d::default());
+    commands.spawn((
+        Camera2d::default(),
+        Camera {
+            order: 1,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        UI_LAYER
+    ));
 }
 
-pub fn build_ui(mut c: Commands, mut s: ResMut<SceneLoader>) {
+pub fn reset_ui_root_transform(mut query: Query<(&mut Transform, &Name)>) { // Query for tuple (&mut Transform, &Name)
+    for (mut ui_root_transform, name) in query.iter_mut() { // Iterate through results (tuples of components)
+        if name.as_str() == "UIRootContainer" { // Check the value of the Name component
+            *ui_root_transform = Transform::IDENTITY;
+            println!("Resetting Transform of UI Root Entity (named 'UIRootContainer')");
+            return; // Optional: Exit after finding and resetting (assuming only one UI root)
+        }
+    }
+    println!("Could not find UI Root Entity to reset transform (named 'UIRootContainer')");
+}
+
+pub fn build_ui(mut c: Commands,
+                mut s: ResMut<SceneLoader>) {
     let file = SceneFile::new("example.client");
     c.ui_root().load_scene_and_edit(&file + "game_container", &mut s, |l| {
+        l.insert((
+            Name::new("UIRootContainer"),
+            UI_LAYER
+        ));
+
         l.edit("status", |l| {
+            l.insert((
+                Name::new("Status Text"),
+                UI_LAYER
+            ));
             l.update_on(resource_mutation::<ConnectionStatus>(),
                         |id: UpdateId, mut e: TextEditor, status: ReactRes<ConnectionStatus>| {
                             write_text!(e, *id, "Status: {}", status.to_string());
                         }
             );
         }).edit("turn_player", |l| {
+            l.insert((
+                 Name::new("Turn Player Text"),
+                 UI_LAYER
+            ));
             l.update_on(resource_mutation::<TurnPlayer>(),
                         |id: UpdateId, mut e: TextEditor, owner: ReactRes<TurnPlayer>, client: Res<Client>| {
                             let _ = match owner.display_id() {
@@ -38,6 +76,10 @@ pub fn build_ui(mut c: Commands, mut s: ResMut<SceneLoader>) {
                         }
             );
         }).edit("button", |l| {
+            l.insert((
+                 Name::new("End Turn Button"),
+                 UI_LAYER
+            ));
             // Update button visual state based on whose turn it is
             l.update_on(resource_mutation::<TurnPlayer>(),
                         move |id: UpdateId, mut c: Commands, owner: ReactRes<TurnPlayer>, client: Res<Client>| {

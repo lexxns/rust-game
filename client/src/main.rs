@@ -17,6 +17,8 @@ use state::{ConnectionStatus, TurnPlayer, EndTurn};
 use ui::{build_ui, setup};
 use client::{client_factory, handle_client_events};
 use crate::hand::setup_hand;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use crate::ui::reset_ui_root_transform;
 
 #[derive(Resource)]
 struct AssetDirectory(PathBuf);
@@ -58,8 +60,9 @@ fn main() {
         .add_plugins((
             bevy_plugins,
             ReactPlugin,
-            CobwebUiPlugin
+            CobwebUiPlugin,
         ))
+        .add_plugins(WorldInspectorPlugin::new())
         .insert_resource(WinitSettings{
             focused_mode   : UpdateMode::reactive(std::time::Duration::from_millis(100)),
             unfocused_mode : UpdateMode::reactive(std::time::Duration::from_millis(100)),
@@ -72,7 +75,9 @@ fn main() {
         .init_react_resource::<TurnPlayer>()
         .init_react_resource::<EndTurn>()
         .add_systems(Startup, (setup, setup_hand))
-        .add_systems(OnEnter(LoadState::Done), build_ui)
+        .add_systems(OnEnter(LoadState::Done), (
+            build_ui, reset_ui_root_transform.after(build_ui))
+        )
         .add_systems(Update, (
             handle_client_events,
             hand::update_card_positions,

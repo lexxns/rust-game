@@ -11,7 +11,7 @@ use bevy::{
 };
 use fontdue::Font;
 use crate::texture::uv_debug_texture;
-
+use crate::ui::{GAME_LAYER, UI_LAYER};
 
 #[derive(Resource, Clone, Debug)]
 pub(crate) struct HandLayoutParams {
@@ -100,18 +100,21 @@ pub fn setup_hand(
 
     commands.spawn((
         Camera3d::default(),
+        GAME_LAYER,
         Transform::from_xyz(0.0, 3.0, 20.0).looking_at(Vec3::new(0., 0., 10.), Vec3::Y),
     ));
 
     #[cfg(not(target_arch = "wasm32"))]
     commands.spawn((
         Text::new("Press space to toggle wireframes"),
+        UI_LAYER,
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(12.0),
             left: Val::Px(12.0),
             ..default()
         },
+        Name::new("Toggle Text")
     ));
 }
 
@@ -153,6 +156,8 @@ fn spawn_card(
             GlobalTransform::default(),
             Card { index },
             Visibility::default(),
+            GAME_LAYER,
+            Name::new(format!("Card {}", index + 1)),
         ))
         .with_children(|parent| {
             // Card base
@@ -160,6 +165,7 @@ fn spawn_card(
                 Mesh3d(card_mesh.clone()),
                 MeshMaterial3d(debug_material.clone()),
                 Transform::default(),
+                GAME_LAYER,
             ));
 
             // Image section
@@ -168,6 +174,7 @@ fn spawn_card(
                 MeshMaterial3d(image_material.clone()),
                 Transform::from_xyz(0.0, 0.1, card_size.z + image_size.z/2.0),
                 CardImage,
+                GAME_LAYER,
             ));
 
             // Text section
@@ -176,6 +183,7 @@ fn spawn_card(
                 MeshMaterial3d(text_material),
                 Transform::from_xyz(0.0, 1.2, card_size.z + text_size.z/2.0 + 0.005),
                 CardText,
+                GAME_LAYER,
             ));
         });
 }
