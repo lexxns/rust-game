@@ -62,7 +62,7 @@ fn main() {
             ReactPlugin,
             CobwebUiPlugin,
         ))
-        .add_plugins(WorldInspectorPlugin::new())
+        // .add_plugins(WorldInspectorPlugin::new())
         .insert_resource(WinitSettings{
             focused_mode   : UpdateMode::reactive(std::time::Duration::from_millis(100)),
             unfocused_mode : UpdateMode::reactive(std::time::Duration::from_millis(100)),

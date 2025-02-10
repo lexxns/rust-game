@@ -12,7 +12,7 @@ pub struct SelectButton;
 pub struct DeselectButton;
 
 pub const GAME_LAYER: RenderLayers = RenderLayers::layer(1);
-pub const UI_LAYER: RenderLayers = RenderLayers::layer(2);
+pub const UI_LAYER: RenderLayers = RenderLayers::layer(0);
 
 pub fn setup(mut commands: Commands) {
     commands.spawn((
@@ -41,26 +41,17 @@ pub fn build_ui(mut c: Commands,
                 mut s: ResMut<SceneLoader>) {
     let file = SceneFile::new("example.client");
     c.ui_root().load_scene_and_edit(&file + "game_container", &mut s, |l| {
-        l.insert((
-            Name::new("UIRootContainer"),
-            UI_LAYER
-        ));
+        l.insert(Name::new("UIRootContainer"));
 
         l.edit("status", |l| {
-            l.insert((
-                Name::new("Status Text"),
-                UI_LAYER
-            ));
+            l.insert(Name::new("Status Text"));
             l.update_on(resource_mutation::<ConnectionStatus>(),
                         |id: UpdateId, mut e: TextEditor, status: ReactRes<ConnectionStatus>| {
                             write_text!(e, *id, "Status: {}", status.to_string());
                         }
             );
         }).edit("turn_player", |l| {
-            l.insert((
-                 Name::new("Turn Player Text"),
-                 UI_LAYER
-            ));
+            l.insert(Name::new("Turn Player Text"));
             l.update_on(resource_mutation::<TurnPlayer>(),
                         |id: UpdateId, mut e: TextEditor, owner: ReactRes<TurnPlayer>, client: Res<Client>| {
                             let _ = match owner.display_id() {
@@ -76,10 +67,7 @@ pub fn build_ui(mut c: Commands,
                         }
             );
         }).edit("button", |l| {
-            l.insert((
-                 Name::new("End Turn Button"),
-                 UI_LAYER
-            ));
+            l.insert(Name::new("End Turn Button"));
             // Update button visual state based on whose turn it is
             l.update_on(resource_mutation::<TurnPlayer>(),
                         move |id: UpdateId, mut c: Commands, owner: ReactRes<TurnPlayer>, client: Res<Client>| {
