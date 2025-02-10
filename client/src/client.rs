@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_cobweb::prelude::{CommandsSyscallExt, ReactCommandsExt, ReactRes, ReactResMut};
 use shared::api::API_VERSION;
 use shared::channel::{GameChannel, GameMessage};
-use crate::state::{ConnectionStatus, TurnPlayer, EndTurn};
+use crate::state::{ConnectionStatus, TurnPlayer, EndTurn, GameState};
 use crate::ui::DeselectButton;
 
 pub type Client = bevy_simplenet::Client<GameChannel>;
@@ -33,7 +33,8 @@ pub fn handle_client_events(
     mut client: ResMut<Client>,
     mut status: ReactResMut<ConnectionStatus>,
     mut pending_select: ReactResMut<EndTurn>,
-    mut turn_player: ReactResMut<TurnPlayer>
+    mut turn_player: ReactResMut<TurnPlayer>,
+    mut game_state: ReactResMut<GameState>,
 ) {
     let mut next_status = *status;
 
@@ -55,6 +56,11 @@ pub fn handle_client_events(
             ClientEvent::Msg(message) => match message {
                 GameMessage::CurrentTurn(new_id) => {
                     c.syscall(new_id, set_new_server_state);
+                }
+                GameMessage::CardsDrawn(amount) => {
+                    let state = game_state.get_mut(&mut c);
+                    state.hand_size += amount;
+                    state.deck_size -= amount;
                 }
                 _ => {}
             }

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use shared::channel::GameMessage;
-use crate::game::game_events::{handle_game_events, handle_next_turn, GameEvent};
+use crate::game::game_events::{handle_game_events, handle_next_turn, GameEvent, GameStateComponent};
 use crate::player_component::{Player, PlayerJoinEvent, PlayerLeaveEvent};
 use crate::room::room_components::{CurrentTurn, Players, Room, RoomState, TurnTimer};
 use crate::room::room_manager::RoomManager;
@@ -31,10 +31,16 @@ fn handle_player_join(
     mut commands: Commands,
     mut room_manager: ResMut<RoomManager>,
     mut join_events: EventReader<PlayerJoinEvent>,
-    mut rooms: Query<(Entity, &mut Players)>,
+    mut rooms: Query<(Entity, &mut Players, &mut GameStateComponent)>,
+    mut game_events: EventWriter<GameEvent>,
 ) {
     for PlayerJoinEvent(player_id) in join_events.read() {
-        let room_entity = room_manager.find_or_create_room(&mut commands, *player_id, &mut rooms);
+        let room_entity = room_manager.find_or_create_room(
+            &mut commands,
+            *player_id,
+            &mut rooms,
+            &mut game_events
+        );
         commands.spawn(Player {
             id: *player_id,
             room: room_entity,

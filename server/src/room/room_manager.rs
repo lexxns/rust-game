@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use std::collections::HashSet;
 use std::time::Duration;
-use crate::game::game_events::{GameState, GameStateComponent};
+use crate::game::game_events::{GameEvent, GameState, GameStateComponent};
 use crate::room::room_components::{CurrentTurn, Players, Room, RoomState, TurnTimer};
 
 #[derive(Resource)]
@@ -20,12 +20,26 @@ impl RoomManager {
         &mut self,
         commands: &mut Commands,
         player_id: u128,
-        rooms: &mut Query<(Entity, &mut Players)>,
+        rooms: &mut Query<(Entity, &mut Players, &mut GameStateComponent)>,
+        game_events: &mut EventWriter<GameEvent>,
     ) -> Entity {
         // Try to find existing room with space
-        for (entity, mut players) in rooms.iter_mut() {
+        for (entity, mut players, mut game_state) in rooms.iter_mut() {
             if players.set.len() < 2 {
                 players.set.insert(player_id);
+
+                // If we now have exactly 2 players, initialize the game
+                if players.set.len() == 2 {
+                    game_state.initialize_for_two_players(&players.set);
+
+                    // Emit draw events for initial hands
+                    for &pid in &players.set {
+                        game_events.send(GameEvent::DrawCard {
+                            player_id: pid,
+                            amount: 5,
+                        });
+                    }
+                }
                 return entity;
             }
         }
@@ -46,11 +60,7 @@ impl RoomManager {
                     is_active: true,
                     last_update: 0.0,
                 },
-                GameStateComponent {
-                    state: GameState::Starting,
-                    deck_size: 30,
-                    discard_pile: Vec::new(),
-                },
+                GameStateComponent::default(),
             ))
             .id()
     }

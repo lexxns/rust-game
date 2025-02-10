@@ -51,3 +51,11 @@ impl EndTurn {
 }
 
 impl Default for EndTurn { fn default() -> Self { Self(None) } }
+
+#[derive(Debug, Clone, Default)]
+pub struct GameState {
+    pub hand_size: u32,
+    pub deck_size: u32,
+}
+
+impl ReactResource for GameState {}

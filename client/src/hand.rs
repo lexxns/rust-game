@@ -9,7 +9,9 @@ use bevy::{
         render_resource::{Extent3d, TextureDimension, TextureFormat},
     },
 };
+use bevy_cobweb::prelude::ReactRes;
 use fontdue::Font;
+use crate::state::GameState;
 use crate::texture::uv_debug_texture;
 use crate::ui::{GAME_LAYER, UI_LAYER};
 
@@ -258,12 +260,17 @@ fn create_text_texture(text: &str, font: &Font) -> Image {
 // System to handle card count changes
 pub(crate) fn update_card_count(
     mut commands: Commands,
-    params: Res<HandLayoutParams>,
+    mut params: ResMut<HandLayoutParams>,
+    game_state: ReactRes<GameState>,
     card_query: Query<Entity, With<Card>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    if params.count != game_state.hand_size as usize {
+        params.count = game_state.hand_size as usize;
+    }
+
     if params.is_changed() {
         let current_count = card_query.iter().count();
 

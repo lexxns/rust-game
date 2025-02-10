@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use shared::channel::{GameMessage};
 use shared::EntityID;
@@ -78,8 +79,34 @@ pub enum GameState {
 #[derive(Component)]
 pub struct GameStateComponent {
     pub state: GameState,
-    pub deck_size: u32,
+    pub player_decks: HashMap<EntityID, u32>,
+    pub player_hands: HashMap<EntityID, u32>,
     pub discard_pile: Vec<EntityID>,
+}
+
+impl GameStateComponent {
+    pub fn initialize_for_two_players(&mut self, players: &HashSet<EntityID>) {
+        // Verify we have exactly 2 players
+        assert_eq!(players.len(), 2, "Must have exactly 2 players to initialize game");
+
+        // Initialize decks and hands for both players
+        for &player_id in players {
+            self.player_decks.insert(player_id, 30);  // 30 card deck
+            self.player_hands.insert(player_id, 5);   // 5 card initial hand
+        }
+
+        self.state = GameState::InProgress;
+    }
+}
+impl Default for GameStateComponent {
+    fn default() -> Self {
+        Self {
+            state: GameState::Starting,
+            player_decks: HashMap::new(),
+            player_hands: HashMap::new(),
+            discard_pile: Vec::new(),
+        }
+    }
 }
 
 // System to handle game events
@@ -102,11 +129,15 @@ pub fn handle_game_events(
                 // Handle drawing cards
                 for (_, players, _, _, mut game_state) in rooms.iter_mut() {
                     if players.set.contains(player_id) {
-                        // Check if there are enough cards in the deck
-                        if game_state.deck_size >= *amount {
-                            game_state.deck_size -= amount;
-                            // Notify player of new cards
-                            server.send(*player_id, GameMessage::CardsDrawn(*amount));
+                        // Check if player has enough cards in deck
+                        if let Some(deck_size) = game_state.player_decks.get_mut(player_id) {
+                            if *deck_size >= *amount {
+                                // Update deck and hand size
+                                *deck_size -= amount;
+                                *game_state.player_hands.get_mut(player_id).unwrap() += amount;
+                                // Notify player of new cards
+                                server.send(*player_id, GameMessage::CardsDrawn(*amount));
+                            }
                         }
                     }
                 }
@@ -197,6 +228,7 @@ pub fn handle_next_turn(
         &mut TurnTimer
     )>,
     server: Res<Server>,
+    mut game_events: EventWriter<GameEvent>,
 ) {
     for next_turn_entity in next_turn_query.iter() {
         println!("Processing next turn");

@@ -18,6 +18,7 @@ use ui::{build_ui, setup};
 use client::{client_factory, handle_client_events};
 use crate::hand::setup_hand;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use crate::state::GameState;
 use crate::ui::reset_ui_root_transform;
 
 #[derive(Resource)]
@@ -74,6 +75,10 @@ fn main() {
         .insert_react_resource(ConnectionStatus::Connecting)
         .init_react_resource::<TurnPlayer>()
         .init_react_resource::<EndTurn>()
+        .insert_react_resource(GameState {
+            hand_size: 0,
+            deck_size: 30,  // Initialize deck size to 30
+        })
         .add_systems(Startup, (setup, setup_hand))
         .add_systems(OnEnter(LoadState::Done), (
             build_ui, reset_ui_root_transform.after(build_ui))
