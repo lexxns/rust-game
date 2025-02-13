@@ -24,6 +24,7 @@ pub enum GameMessage {
     CardsDrawn(u32),                   // How many cards were drawn
     CardPlayed(EntityID, EntityID),    // Who played what card
     CardDiscarded(EntityID, EntityID), // Who discarded what card
+    CardsInDeck(u32),                  // Current deck count
     GameOver(Option<EntityID>),        // Game ended, optional winner
 
     // Player actions (client -> server)

@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 use bevy_simplenet::{ClientId, RequestToken, ServerReport};
 use shared::channel::GameMessage;
-use crate::game::game_events::{GameEvent, IntoGameEvent, MessageContext};
+use crate::game::game_event_structs::{GameEventWithContext, IntoGameEvent, MessageContext};
 use crate::player_component::{Player, PlayerJoinEvent, PlayerLeaveEvent};
-use crate::room::room_components::{Players};
+use crate::room::room_components::Players;
 use crate::types::{Server, ServerEvent};
 
 #[allow(clippy::type_complexity)]
@@ -12,7 +12,7 @@ pub fn handle_server_events(
     mut server: ResMut<Server>,
     mut join_events: EventWriter<PlayerJoinEvent>,
     mut leave_events: EventWriter<PlayerLeaveEvent>,
-    mut game_events: EventWriter<GameEvent>,
+    mut game_events: EventWriter<GameEventWithContext>,
     player_query: Query<(Entity, &Player)>,
     rooms: Query<(Entity, &Players)>,
 ) {
@@ -28,7 +28,6 @@ pub fn handle_server_events(
             ),
             ServerEvent::Request(token, request) => handle_request(
                 &mut game_events,
-                &mut commands,
                 &mut server,
                 &player_query,
                 &rooms,
@@ -42,8 +41,7 @@ pub fn handle_server_events(
 }
 
 fn handle_request(
-    game_events: &mut EventWriter<GameEvent>,
-    commands: &mut Commands,
+    game_events: &mut EventWriter<GameEventWithContext>,
     server: &mut ResMut<Server>,
     player_query: &Query<(Entity, &Player)>,
     rooms: &Query<(Entity, &Players)>,
@@ -55,7 +53,7 @@ fn handle_request(
     if let Some((_, player)) = player_query.iter().find(|(_, p)| p.id == client_id) {
         let context = MessageContext {
             client_id,
-            room_entity: Some(player.room),
+            room_entity: player.room,
         };
 
         match message.clone().into_game_event(&context) {

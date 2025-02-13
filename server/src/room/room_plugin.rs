@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use shared::channel::GameMessage;
-use crate::game::game_events::{process_game_events, GameEvent, GameEventQueue, GameStateComponent};
+use crate::game::game_event_processing::process_game_events;
+use crate::game::game_event_structs::{GameEvent, GameEventQueue, GameEventWithContext, GameStateComponent};
 use crate::player_component::{Player, PlayerJoinEvent, PlayerLeaveEvent};
 use crate::room::room_components::{CurrentTurn, Players, Room, RoomState, TurnTimer};
 use crate::room::room_manager::RoomManager;
@@ -14,14 +15,23 @@ impl Plugin for RoomPlugin {
             .init_resource::<RoomManager>()
             .add_event::<PlayerJoinEvent>()
             .add_event::<PlayerLeaveEvent>()
-            .add_event::<GameEvent>()
+            .add_event::<GameEventWithContext>()
             .add_systems(Update, (
-                handle_player_join,
-                handle_player_leave,
-                handle_room_turns,
-                update_room_timer,
+                // First handle player management
+                (
+                    handle_player_join,
+                    handle_player_leave,
+                ),
+                // Then route any generated events to room queues
+                route_game_events,
+                // Then process room state
+                (
+                    handle_room_turns,
+                    update_room_timer,
+                    process_game_events,
+                ),
+                // Finally cleanup
                 cleanup_inactive_rooms,
-                process_game_events,
             ).chain());
     }
 }
@@ -31,7 +41,7 @@ fn handle_player_join(
     mut room_manager: ResMut<RoomManager>,
     mut join_events: EventReader<PlayerJoinEvent>,
     mut rooms: Query<(Entity, &mut Players, &mut GameStateComponent)>,
-    mut game_events: EventWriter<GameEvent>,
+    mut game_events: EventWriter<GameEventWithContext>,
 ) {
     for PlayerJoinEvent(player_id) in join_events.read() {
         let room_entity = room_manager.find_or_create_room(
@@ -70,25 +80,15 @@ fn handle_room_turns(
 }
 
 pub fn route_game_events(
-    mut game_events: EventReader<GameEvent>,
-    mut rooms: Query<(Entity, &Players, &mut GameEventQueue)>,
+    mut game_events: EventReader<GameEventWithContext>,
+    mut rooms: Query<(Entity, &mut GameEventQueue)>,
 ) {
     for event in game_events.read() {
-        let player_id = match event {
-            GameEvent::DrawCard { player_id, .. } => player_id,
-            GameEvent::PlayCard { player_id, .. } => player_id,
-            GameEvent::EndTurn { player_id } => player_id,
-            GameEvent::StartTurn { player_id } => player_id,
-            GameEvent::SpecialAction { player_id, .. } => player_id,
-            GameEvent::GameStateChange { .. } => continue, // Handle differently if needed
-        };
-
-        // Find the room containing this player and add the event to its queue
-        for (_, players, mut event_queue) in rooms.iter_mut() {
-            if players.set.contains(player_id) {
-                event_queue.next_events.push_back(event.clone());
-                break;
-            }
+        // Find the room using the context and add the event to its queue
+        if let Ok((_, mut event_queue)) = rooms.get_mut(event.context.room_entity) {
+            event_queue.next_events.push_back(event.clone());
+        } else {
+            warn!("Attempted to route event to non-existent room: {:?}", event.context.room_entity);
         }
     }
 }
