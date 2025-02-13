@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use std::collections::HashSet;
 use std::time::Duration;
-use crate::game::game_events::{GameEvent, GameState, GameStateComponent};
+use crate::game::game_events::{GameEvent, GameEventQueue, GameState, GameStateComponent};
 use crate::room::room_components::{CurrentTurn, Players, Room, RoomState, TurnTimer};
 
 #[derive(Resource)]
@@ -32,6 +32,8 @@ impl RoomManager {
                 if players.set.len() == 2 {
                     game_state.initialize_for_two_players(&players.set);
 
+
+
                     // Emit draw events for initial hands
                     for &pid in &players.set {
                         game_events.send(GameEvent::DrawCard {
@@ -61,6 +63,7 @@ impl RoomManager {
                     last_update: 0.0,
                 },
                 GameStateComponent::default(),
+                GameEventQueue::default()
             ))
             .id()
     }
