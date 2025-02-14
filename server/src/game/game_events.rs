@@ -88,16 +88,20 @@ pub fn game_event_start_turn(
     player_id: EntityID,
     server: &Res<Server>,
 ) -> EventResult {
-    current_turn.player = Some(player_id);
     println!("Switching turn to player: {:?}", player_id);
-    // Notify all players
-    for &player_id in &players.set {
-        server.send(player_id, GameMessage::CurrentTurn(Some(player_id)));
-    }
-    EventResult {
+    let mut result = EventResult {
         reset_timer: true,
         next_events: Vec::new(),
+    };
+    if let turn_player = Some(player_id) {
+        current_turn.player = turn_player;
+        // Notify all players
+        for &player_id in &players.set {
+            server.send(player_id, GameMessage::CurrentTurn(turn_player));
+        }
+        result.next_events.push(GameEvent::DrawCard { player_id: turn_player.unwrap(), amount: 1 });
     }
+    result
 }
 
 pub fn game_event_end_turn(players: &Players, current_turn: &mut Mut<CurrentTurn>, player_id: EntityID) -> EventResult {
