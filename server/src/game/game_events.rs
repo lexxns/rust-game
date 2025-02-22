@@ -2,6 +2,7 @@ use std::fmt::format;
 use bevy::prelude::{Commands, Entity, Mut, Query, Res};
 use bevy::reflect::Set;
 use tracing::warn;
+use shared::card_details::build_default_deck;
 use shared::channel::{Card, GameMessage};
 use shared::EntityID;
 use crate::game::game_event_structs::{CardComponent, DeckComponent, EventResult, GameEvent, GameState, GameStateComponent, HandComponent, SpecialActionType};
@@ -32,17 +33,29 @@ pub fn game_event_end_game() -> EventResult {
 pub fn game_event_add_cards_to_decks(mut commands: &mut Commands, server: &Res<Server>, game_state: &mut GameStateComponent, player_id: EntityID, amount: u32) -> EventResult {
     let deck = game_state.player_decks.entry(player_id).or_insert_with(|| DeckComponent::new(player_id));
     let mut new_card_entities: Vec< Entity> = Vec::with_capacity(amount as usize); // Store Entity IDs
-    for i in 0..amount {
+
+    // Get the default deck configuration
+    let deck_cards = build_default_deck();
+
+    // Create entities for each card
+    for (card_id, card_name, card_text) in deck_cards {
         let new_card = CardComponent::new(
             Card {
-                card_id: i as EntityID,
-                card_name: format!("Card {i}"),
-                card_text: format!("This is the text for {i}"),
+                card_id,
+                card_name,
+                card_text,
             }
         );
-        let entity = commands.spawn(new_card).id(); // Spawn and get the Entity
+        let entity = commands.spawn(new_card).id();
         new_card_entities.push(entity);
     }
+
+    // Shuffle the new cards using rand
+    use rand::seq::SliceRandom;
+    let mut rng = rand::thread_rng();
+    new_card_entities.shuffle(&mut rng);
+
+    // Add shuffled cards to deck
     deck.cards.append(&mut new_card_entities);
 
     server.send(player_id, GameMessage::CardsInDeck(deck.cards.len() as u32));

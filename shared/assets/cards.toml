@@ -1,0 +1,104 @@
+[cards.stellar_cruiser]
+name = "Stellar Cruiser"
+text = "A versatile combat vessel equipped with advanced shielding and weapons systems."
+c_type = "Ship"
+cost = 5
+power = 4
+
+[cards.plasma_cannon]
+name = "Plasma Cannon"
+text = "Unleash a devastating burst of plasma energy at your target."
+c_type = "Weapon"
+cost = 3
+power = 3
+
+[cards.defense_satellite]
+name = "Defense Satellite"
+text = "Orbital platform that provides protection to nearby friendly units."
+c_type = "Station"
+cost = 4
+power = 2
+
+[cards.void_rift]
+name = "Void Rift"
+text = "Create a temporary wormhole to outmaneuver your opponents."
+c_type = "Event"
+cost = 2
+power = 0
+
+[cards.quantum_shield]
+name = "Quantum Shield"
+text = "Advanced barrier technology that can absorb multiple hits."
+c_type = "Defense"
+cost = 3
+power = 0
+
+[cards.asteroid_miner]
+name = "Asteroid Miner"
+text = "Harvest resources from nearby asteroids to power your fleet."
+c_type = "Ship"
+cost = 3
+power = 2
+
+[cards.cosmic_storm]
+name = "Cosmic Storm"
+text = "Unleash a devastating space storm that damages all ships in the sector."
+c_type = "Event"
+cost = 6
+power = 0
+
+[cards.repair_drone]
+name = "Repair Drone"
+text = "Automated unit that repairs damage to your ships."
+c_type = "Support"
+cost = 2
+power = 1
+
+[cards.battle_station]
+name = "Battle Station"
+text = "Heavily armed space station that dominates the local space."
+c_type = "Station"
+cost = 7
+power = 6
+
+[cards.stealth_fighter]
+name = "Stealth Fighter"
+text = "Advanced ship with cloaking technology."
+c_type = "Ship"
+cost = 4
+power = 3
+
+[cards.energy_amplifier]
+name = "Energy Amplifier"
+text = "Boost the power output of your ships and weapons."
+c_type = "Support"
+cost = 3
+power = 0
+
+[cards.gravity_well]
+name = "Gravity Well"
+text = "Create a localized gravitational field to trap enemy ships."
+c_type = "Event"
+cost = 4
+power = 0
+
+[cards.ion_frigate]
+name = "Ion Frigate"
+text = "Medium-class vessel specializing in ion-based weaponry."
+c_type = "Ship"
+cost = 4
+power = 3
+
+[cards.orbital_cannon]
+name = "Orbital Cannon"
+text = "Powerful space-to-space weapon platform."
+c_type = "Station"
+cost = 5
+power = 4
+
+[cards.nebula_explorer]
+name = "Nebula Explorer"
+text = "Specialized ship designed for deep space exploration."
+c_type = "Ship"
+cost = 3
+power = 2

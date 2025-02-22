@@ -149,7 +149,7 @@ fn spawn_card(
 
     // Create text material for this card
     let text_material = materials.add(StandardMaterial {
-        base_color_texture: Some(images.add(create_text_texture(&format!("Card {}", index + 1), font))),
+        base_color_texture: Some(images.add(create_text_texture(&card_name, font))),
         unlit: true,
         alpha_mode: AlphaMode::Blend,
         ..default()

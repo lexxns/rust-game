@@ -17,7 +17,6 @@ use state::{ConnectionStatus, TurnPlayer, EndTurn};
 use ui::{build_ui, setup};
 use client::{client_factory, handle_client_events};
 use crate::hand::setup_hand;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use crate::state::GameState;
 use crate::ui::reset_ui_root_transform;
 

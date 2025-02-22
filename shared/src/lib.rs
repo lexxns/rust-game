@@ -1,5 +1,6 @@
 pub mod message_utils;
 pub mod channel;
+pub mod card_details;
 
 pub type EntityID = u128;
 
