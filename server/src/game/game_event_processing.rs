@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::game::game_event_structs::{EventResult, GameEvent, GameEventQueue, GameEventWithContext, GameStateComponent};
+use crate::game::game_event_structs::{CardComponent, EventResult, GameEvent, GameEventQueue, GameEventWithContext, GameStateComponent};
 use crate::game::game_events;
 use crate::room::room_components::{CurrentTurn, Players, TurnTimer};
 use crate::types::Server;
@@ -15,6 +15,8 @@ pub fn process_game_events(
         &mut GameEventQueue
     )>,
     server: Res<Server>,
+    mut commands: Commands,
+    mut card_query: Query<&mut CardComponent>
 ) {
     for (room_entity, players, mut current_turn, mut timer, mut game_state, mut event_queue) in rooms.iter_mut() {
         if !event_queue.current_events.is_empty() {
@@ -38,10 +40,10 @@ pub fn process_game_events(
                     game_events::game_event_end_turn(players, &mut current_turn, player_id)
                 }
                 GameEvent::AddCardsToDeck { player_id, amount} => {
-                    game_events::game_event_add_cards_to_decks(&server, &mut game_state, player_id, amount)
+                    game_events::game_event_add_cards_to_decks(&mut commands, &server, &mut game_state, player_id, amount)
                 }
                 GameEvent::DrawCard { player_id, amount } => {
-                    game_events::game_event_draw_card(&server, players, &mut game_state, player_id, amount)
+                    game_events::game_event_draw_card(&server, &card_query, &mut game_state, player_id, amount)
                 }
                 GameEvent::PlayCard { player_id, card_id, target } => {
                     game_events::game_event_play_card(players, player_id, card_id, &mut game_state)

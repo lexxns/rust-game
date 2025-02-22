@@ -57,10 +57,11 @@ pub fn handle_client_events(
                 GameMessage::CurrentTurn(new_id) => {
                     c.syscall(new_id, set_new_server_state);
                 }
-                GameMessage::CardsDrawn(amount) => {
+                GameMessage::CardsDrawn(mut cards) => {
                     let state = game_state.get_mut(&mut c);
-                    state.hand_size += amount;
-                    state.deck_size -= amount;
+                    state.hand.append(&mut cards);
+                    let hand_size = state.hand.len();
+                    println!("{hand_size} cards in hand");
                 }
                 _ => {}
             }

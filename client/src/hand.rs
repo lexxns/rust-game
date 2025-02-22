@@ -9,6 +9,7 @@ use bevy::{
         render_resource::{Extent3d, TextureDimension, TextureFormat},
     },
 };
+use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use bevy_cobweb::prelude::ReactRes;
 use fontdue::Font;
 use crate::state::GameState;
@@ -86,6 +87,7 @@ pub fn setup_hand(
             &debug_material,
             &font,
             i,
+            "TEMP".to_string(),
         );
     }
 
@@ -128,6 +130,7 @@ fn spawn_card(
     debug_material: &Handle<StandardMaterial>,
     font: &Font,
     index: usize,
+    card_name: String
 ) {
     // Card dimensions
     let card_size = Vec3::new(2.0, 3.0, 0.01);
@@ -159,7 +162,7 @@ fn spawn_card(
             Card { index },
             Visibility::default(),
             GAME_LAYER,
-            Name::new(format!("Card {}", index + 1)),
+            Name::new(card_name),
         ))
         .with_children(|parent| {
             // Card base
@@ -267,8 +270,8 @@ pub(crate) fn update_card_count(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if params.count != game_state.hand_size as usize {
-        params.count = game_state.hand_size as usize;
+    if params.count != game_state.hand.len(){
+        params.count = game_state.hand.len();
     }
 
     if params.is_changed() {
@@ -290,7 +293,8 @@ pub(crate) fn update_card_count(
             let font = Font::from_bytes(font_data as &[u8], fontdue::FontSettings::default()).unwrap();
 
             // Spawn new cards
-            for i in 0..params.count {
+            for i in 0..game_state.hand.len() {
+                let c = game_state.hand[i].clone();
                 spawn_card(
                     &mut commands,
                     &mut meshes,
@@ -299,6 +303,7 @@ pub(crate) fn update_card_count(
                     &debug_material,
                     &font,
                     i,
+                    c.card_name
                 );
             }
         }

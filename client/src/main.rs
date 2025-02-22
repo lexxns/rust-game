@@ -76,7 +76,7 @@ fn main() {
         .init_react_resource::<TurnPlayer>()
         .init_react_resource::<EndTurn>()
         .insert_react_resource(GameState {
-            hand_size: 0,
+            hand: Vec::new(),
             deck_size: 30,  // Initialize deck size to 30
         })
         .add_systems(Startup, (setup, setup_hand))

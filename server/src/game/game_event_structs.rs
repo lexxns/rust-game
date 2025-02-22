@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use bevy::prelude::{Component, Entity, Event};
-use shared::channel::GameMessage;
+use shared::channel::{Card, GameMessage};
 use shared::EntityID;
 
 // Context that every game event must have
@@ -108,9 +108,64 @@ pub enum GameState {
 #[derive(Component)]
 pub struct GameStateComponent {
     pub state: GameState,
-    pub player_decks: HashMap<EntityID, u32>,
-    pub player_hands: HashMap<EntityID, u32>,
+    pub player_decks: HashMap<EntityID, DeckComponent>,
+    pub player_hands: HashMap<EntityID, HandComponent>,
     pub discard_pile: Vec<EntityID>,
+}
+
+#[derive(Component)]
+pub struct DeckComponent {
+    pub player_id: EntityID,
+    pub cards: Vec<Entity>
+}
+
+#[derive(Component)]
+pub struct HandComponent {
+    pub player_id: EntityID,
+    pub cards: Vec<Entity>,
+}
+
+impl DeckComponent {
+    pub fn new(player_id: EntityID) -> Self {
+        Self { cards: Vec::new(), player_id }
+    }
+}
+
+impl HandComponent {
+    pub(crate) fn default(player_id: EntityID) -> HandComponent {
+        HandComponent {
+            player_id,
+            cards: Vec::new()
+        }
+    }
+}
+
+// Card component
+#[derive(Component)]
+pub struct CardComponent(Card);
+
+impl CardComponent {
+
+    pub fn new(card: Card) -> CardComponent {
+        CardComponent(card)
+    }
+
+    pub(crate) fn as_card(&self) -> Card {
+        self.0.clone()
+    }
+
+    // using a separate ID to the Entity ID of bevy
+    pub(crate) fn get_id(&self) -> EntityID {
+        self.0.card_id
+    }
+
+    pub(crate) fn get_name(&self) -> String {
+        self.0.card_name.clone()
+    }
+
+    pub(crate) fn get_text(&self) -> String {
+        self.0.card_text.clone()
+    }
 }
 
 impl Default for GameStateComponent {

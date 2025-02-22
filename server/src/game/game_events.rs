@@ -1,8 +1,10 @@
-use bevy::prelude::{Mut, Res};
+use std::fmt::format;
+use bevy::prelude::{Commands, Entity, Mut, Query, Res};
 use bevy::reflect::Set;
-use shared::channel::GameMessage;
+use tracing::warn;
+use shared::channel::{Card, GameMessage};
 use shared::EntityID;
-use crate::game::game_event_structs::{EventResult, GameEvent, GameState, GameStateComponent, SpecialActionType};
+use crate::game::game_event_structs::{CardComponent, DeckComponent, EventResult, GameEvent, GameState, GameStateComponent, HandComponent, SpecialActionType};
 use crate::room::room_components::{CurrentTurn, Players};
 use crate::types::Server;
 
@@ -27,12 +29,23 @@ pub fn game_event_end_game() -> EventResult {
     EventResult::default()
 }
 
-pub fn game_event_add_cards_to_decks(server: &Res<Server>, game_state: &mut GameStateComponent, player_id: EntityID, amount: u32) -> EventResult {
-    let count = game_state.player_decks.entry(player_id)
-        .and_modify(|count| *count += amount)
-        .or_insert(amount);
+pub fn game_event_add_cards_to_decks(mut commands: &mut Commands, server: &Res<Server>, game_state: &mut GameStateComponent, player_id: EntityID, amount: u32) -> EventResult {
+    let deck = game_state.player_decks.entry(player_id).or_insert_with(|| DeckComponent::new(player_id));
+    let mut new_card_entities: Vec< Entity> = Vec::with_capacity(amount as usize); // Store Entity IDs
+    for i in 0..amount {
+        let new_card = CardComponent::new(
+            Card {
+                card_id: i as EntityID,
+                card_name: format!("Card {i}"),
+                card_text: format!("This is the text for {i}"),
+            }
+        );
+        let entity = commands.spawn(new_card).id(); // Spawn and get the Entity
+        new_card_entities.push(entity);
+    }
+    deck.cards.append(&mut new_card_entities);
 
-    server.send(player_id, GameMessage::CardsInDeck(*count));
+    server.send(player_id, GameMessage::CardsInDeck(deck.cards.len() as u32));
     EventResult::default()
 }
 
@@ -115,18 +128,26 @@ pub fn game_event_end_turn(players: &Players, current_turn: &mut Mut<CurrentTurn
     result
 }
 
-pub fn game_event_draw_card(server: &Res<Server>, players: &Players, game_state: &mut Mut<GameStateComponent>, player_id: EntityID, amount: u32) -> EventResult {
-    if let Some(deck_size) = game_state.player_decks.get_mut(&player_id) {
-        if *deck_size >= amount {
-            *deck_size -= amount;
+pub fn game_event_draw_card(server: &Res<Server>, query: &Query<&mut CardComponent>, game_state: &mut Mut<GameStateComponent>, player_id: EntityID, amount: u32) -> EventResult {
+    if let Some(deck) = game_state.player_decks.get_mut(&player_id) {
+        if deck.cards.len() >= amount as usize {
+            let mut drawn_card_entities = deck.cards.drain(..amount as usize).collect::<Vec<_>>();
 
-            // Initialize or update the player's hand
-            let hand_count = game_state.player_hands
-                .entry(player_id)
-                .or_insert(0);
-            *hand_count += amount;
+            let mut drawn_cards: Vec<Card> = Vec::with_capacity(drawn_card_entities.len());
+            for entity in &drawn_card_entities {
+                if let Ok(card_component) = query.get(*entity) { // Use the passed-in query
+                    drawn_cards.push(card_component.as_card());
+                } else {
+                    warn!("Entity {:?} does not have a CardComponent", entity);
+                }
+            }
 
-            server.send(player_id, GameMessage::CardsDrawn(amount));
+            let hand = game_state.player_hands.entry(player_id)
+                .or_insert(HandComponent::default(player_id));
+
+            hand.cards.append(&mut drawn_card_entities);
+
+            server.send(player_id, GameMessage::CardsDrawn(drawn_cards));
         }
     }
     EventResult::default()

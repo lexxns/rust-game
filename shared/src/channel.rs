@@ -18,12 +18,19 @@ pub enum MessageType {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Card {
+    pub card_id: EntityID,
+    pub card_name: String,
+    pub card_text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum GameMessage {
     // Game state updates (server -> client)
     CurrentTurn(Option<EntityID>),     // Who's turn is it
-    CardsDrawn(u32),                   // How many cards were drawn
-    CardPlayed(EntityID, EntityID),    // Who played what card
-    CardDiscarded(EntityID, EntityID), // Who discarded what card
+    CardsDrawn(Vec<Card>),             // Cards drawn
+    CardPlayed(EntityID, Card),        // Who played what card
+    CardDiscarded(EntityID, EntityID),     // Who discarded what card
     CardsInDeck(u32),                  // Current deck count
     GameOver(Option<EntityID>),        // Game ended, optional winner
 
