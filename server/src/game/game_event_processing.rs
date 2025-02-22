@@ -24,7 +24,7 @@ pub fn process_game_events(
         }
         let mut events_to_queue = Vec::new();
 
-        while let Some(event) = event_queue.current_events.pop_front() {
+        if let Some(event) = event_queue.current_events.pop_front() {
             println!("Processing queued game event: {:?}", event);
             let context = event.context.clone();
             let result: EventResult = match event.event {
@@ -71,7 +71,9 @@ pub fn process_game_events(
         event_queue.next_events.extend(events_to_queue);
 
 
-        // Swap queues at the end of processing
-        event_queue.swap_queues();
+        // Only swap queues if current_events is empty
+        if event_queue.current_events.is_empty() {
+            event_queue.swap_queues();
+        }
     }
 }

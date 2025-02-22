@@ -92,16 +92,22 @@ pub fn handle_button_select(
     client: Res<Client>,
     status: ReactRes<ConnectionStatus>,
     mut pending_select: ReactResMut<EndTurn>,
-    owner: ReactResMut<TurnPlayer>
+    mut owner: ReactResMut<TurnPlayer>
 ) {
     // Only allow button interaction if connected and it's the client's turn
     if *status != ConnectionStatus::Connected || !owner.is_current_turn(&client) {
         return;
     }
 
+    // Store current turn player before sending request
+    let current_player = owner.server_determined_player_id;
+
     // Send end turn request to server
     let signal = client.request(GameMessage::EndTurn);
     pending_select.get_mut(&mut c).0 = Some(signal);
+
+    // Maintain the current turn state while we wait for server response
+    owner.get_mut(&mut c).predicted_player_id = current_player;
 }
 
 pub fn handle_button_deselect(
