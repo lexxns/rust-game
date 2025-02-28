@@ -2,9 +2,10 @@ use std::env;
 use std::path::PathBuf;
 use bevy::prelude::*;
 use bevy::window::WindowTheme;
-use bevy::winit::{UpdateMode, WinitSettings};
 use bevy_cobweb::prelude::*;
 use bevy_cobweb_ui::prelude::*;
+use bevy_framepace::FramepacePlugin;
+use bevy_inspector_egui::bevy_egui::{EguiContext, EguiPlugin};
 use wasm_timer::{SystemTime, UNIX_EPOCH};
 
 mod state;
@@ -61,13 +62,10 @@ fn main() {
             bevy_plugins,
             ReactPlugin,
             CobwebUiPlugin,
+            FramepacePlugin,
+            EguiPlugin
         ))
         // .add_plugins(WorldInspectorPlugin::new())
-        .insert_resource(WinitSettings{
-            focused_mode   : UpdateMode::reactive(std::time::Duration::from_millis(100)),
-            unfocused_mode : UpdateMode::reactive(std::time::Duration::from_millis(100)),
-            ..Default::default()
-        })
         .insert_resource(client)
         .insert_resource(hand::HandLayoutParams::default())
         .insert_resource(AssetDirectory(asset_path.clone()))
@@ -87,8 +85,30 @@ fn main() {
             hand::update_card_positions,
             hand::update_card_count
         ))
+        // .add_systems(
+        //     PostUpdate,
+        //     show_ui_system
+        //         .before(EguiPostUpdateSet::ProcessOutput)
+        //         .before(bevy_egui::end_pass_system)
+        //         .before(bevy::transform::TransformSystem::TransformPropagate),
+        // )
+        // .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
         .add_reactor(broadcast::<ui::SelectButton>(), ui::handle_button_select)
         .add_reactor(broadcast::<ui::DeselectButton>(), ui::handle_button_deselect)
         .load("main.cob")
         .run();
 }
+
+// fn show_ui_system(world: &mut World) {
+//     let Ok(egui_context) = world
+//         .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
+//         .get_single(world)
+//     else {
+//         return;
+//     };
+//     let mut egui_context = egui_context.clone();
+//
+//     world.resource_scope::<UiState, _>(|world, mut ui_state| {
+//         ui_state.ui(world, egui_context.get_mut())
+//     });
+// }
