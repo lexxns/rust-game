@@ -3,7 +3,7 @@ use bevy::prelude::{Commands, Entity, Mut, Query, Res};
 use bevy::reflect::Set;
 use tracing::warn;
 use shared::card_details::build_default_deck;
-use shared::channel::{Card, GameMessage};
+use shared::channel::{CardData, CardType, GameMessage};
 use shared::EntityID;
 use crate::game::game_event_structs::{CardComponent, DeckComponent, EventResult, GameEvent, GameState, GameStateComponent, HandComponent, SpecialActionType};
 use crate::room::room_components::{CurrentTurn, Players};
@@ -40,10 +40,14 @@ pub fn game_event_add_cards_to_decks(mut commands: &mut Commands, server: &Res<S
     // Create entities for each card
     for (card_id, card_name, card_text) in deck_cards {
         let new_card = CardComponent::new(
-            Card {
+            CardData {
                 card_id,
                 card_name,
                 card_text,
+                card_type: CardType::Creature,
+                cost: 0,
+                power: 0,
+                health: 0,
             }
         );
         let entity = commands.spawn(new_card).id();
@@ -146,7 +150,7 @@ pub fn game_event_draw_card(server: &Res<Server>, query: &Query<&mut CardCompone
         if deck.cards.len() >= amount as usize {
             let mut drawn_card_entities = deck.cards.drain(..amount as usize).collect::<Vec<_>>();
 
-            let mut drawn_cards: Vec<Card> = Vec::with_capacity(drawn_card_entities.len());
+            let mut drawn_cards: Vec<CardData> = Vec::with_capacity(drawn_card_entities.len());
             for entity in &drawn_card_entities {
                 if let Ok(card_component) = query.get(*entity) { // Use the passed-in query
                     drawn_cards.push(card_component.as_card());

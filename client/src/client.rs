@@ -1,9 +1,8 @@
 use bevy::prelude::*;
-use bevy_cobweb::prelude::{CommandsSyscallExt, ReactCommandsExt, ReactRes, ReactResMut};
+use bevy_cobweb::prelude::{CommandsSyscallExt, ReactRes, ReactResMut};
 use shared::api::API_VERSION;
 use shared::channel::{GameChannel, GameMessage};
 use crate::state::{ConnectionStatus, TurnPlayer, EndTurn, GameState};
-use crate::ui::DeselectButton;
 
 pub type Client = bevy_simplenet::Client<GameChannel>;
 pub type ClientEvent = bevy_simplenet::ClientEventFrom<GameChannel>;
@@ -15,7 +14,7 @@ pub fn client_factory() -> bevy_simplenet::ClientFactory<GameChannel> {
 fn set_new_server_state(
     In(server_state): In<Option<u128>>,
     mut c: Commands,
-    client: Res<Client>,
+    // client: Res<Client>,
     pending_select: ReactRes<EndTurn>,
     mut owner: ReactResMut<TurnPlayer>
 ) {
@@ -23,9 +22,9 @@ fn set_new_server_state(
 
     if pending_select.is_predicted() { return; }
 
-    if server_state != Some(client.id()) {
-        c.react().broadcast(DeselectButton);
-    }
+    // if server_state != Some(client.id()) {
+    //     // do something
+    // }
 }
 
 pub fn handle_client_events(
@@ -48,7 +47,6 @@ pub fn handle_client_events(
                 bevy_simplenet::ClientReport::IsDead(aborted_reqs) => {
                     for aborted_req in aborted_reqs {
                         if !pending_select.equals_request(aborted_req) { continue; }
-                        c.react().broadcast(DeselectButton);
                     }
                     next_status = ConnectionStatus::Dead;
                 }
@@ -59,8 +57,8 @@ pub fn handle_client_events(
                 }
                 GameMessage::CardsDrawn(mut cards) => {
                     let state = game_state.get_mut(&mut c);
-                    state.hand.append(&mut cards);
-                    let hand_size = state.hand.len();
+                    state.player_hand.append(&mut cards);
+                    let hand_size = state.player_hand.len();
                     println!("{hand_size} cards in hand");
                 }
                 _ => {}
@@ -77,7 +75,6 @@ pub fn handle_client_events(
             ClientEvent::SendFailed(request_id) |
             ClientEvent::ResponseLost(request_id) => {
                 if !pending_select.equals_request(request_id) { continue; }
-                c.react().broadcast(DeselectButton);
             }
         }
     }

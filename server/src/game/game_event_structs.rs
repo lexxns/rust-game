@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use bevy::prelude::{Component, Entity, Event};
-use shared::channel::{Card, GameMessage};
+use shared::channel::{CardData, GameMessage};
 use shared::EntityID;
 
 // Context that every game event must have
@@ -142,15 +142,15 @@ impl HandComponent {
 
 // Card component
 #[derive(Component)]
-pub struct CardComponent(Card);
+pub struct CardComponent(CardData);
 
 impl CardComponent {
 
-    pub fn new(card: Card) -> CardComponent {
+    pub fn new(card: CardData) -> CardComponent {
         CardComponent(card)
     }
 
-    pub(crate) fn as_card(&self) -> Card {
+    pub(crate) fn as_card(&self) -> CardData {
         self.0.clone()
     }
 

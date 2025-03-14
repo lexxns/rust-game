@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use bevy::window::WindowTheme;
 use bevy_cobweb::prelude::*;
 use bevy_cobweb_ui::prelude::*;
-use bevy_framepace::FramepacePlugin;
-use bevy_inspector_egui::bevy_egui::{EguiContext, EguiPlugin};
+use bevy_inspector_egui::bevy_egui;
+use bevy_inspector_egui::bevy_egui::{EguiPlugin, EguiPostUpdateSet};
 use wasm_timer::{SystemTime, UNIX_EPOCH};
 
 mod state;
@@ -15,11 +15,11 @@ mod hand;
 mod texture;
 
 use state::{ConnectionStatus, TurnPlayer, EndTurn};
-use ui::{build_ui, setup};
 use client::{client_factory, handle_client_events};
-use crate::hand::setup_hand;
-use crate::state::GameState;
-use crate::ui::reset_ui_root_transform;
+use crate::hand::{setup_hand, HandLayoutParams};
+use crate::state::{setup_game_state, GameState, SelectedCard, UiState};
+use crate::texture::uv_debug_texture;
+use crate::ui::{show_ui_system, set_camera_viewport, setup_camera, setup_lighting, setup_play_field};
 
 #[derive(Resource)]
 struct AssetDirectory(PathBuf);
@@ -41,7 +41,7 @@ fn main() {
     );
 
     // prepare bevy plugins
-    let bevy_plugins = bevy::DefaultPlugins
+    let bevy_plugins = DefaultPlugins
         .set(
             WindowPlugin{
                 primary_window: Some(Window{ window_theme: Some(WindowTheme::Dark), ..Default::default() }),
@@ -62,53 +62,47 @@ fn main() {
             bevy_plugins,
             ReactPlugin,
             CobwebUiPlugin,
-            FramepacePlugin,
             EguiPlugin
         ))
         // .add_plugins(WorldInspectorPlugin::new())
         .insert_resource(client)
-        .insert_resource(hand::HandLayoutParams::default())
+        .insert_resource(HandLayoutParams::default())
         .insert_resource(AssetDirectory(asset_path.clone()))
         .insert_react_resource(ConnectionStatus::Connecting)
+        .insert_resource(UiState::new())
+        .insert_resource(GameState::default())
+        .init_resource::<HandLayoutParams>()
+        .init_resource::<SelectedCard>()
         .init_react_resource::<TurnPlayer>()
         .init_react_resource::<EndTurn>()
-        .insert_react_resource(GameState {
-            hand: Vec::new(),
-            deck_size: 30,  // Initialize deck size to 30
-        })
+        .init_react_resource::<GameState>()
         .add_systems(Startup, (setup, setup_hand))
-        .add_systems(OnEnter(LoadState::Done), (
-            build_ui, reset_ui_root_transform.after(build_ui))
-        )
         .add_systems(Update, (
             handle_client_events,
             hand::update_card_positions,
             hand::update_card_count
         ))
-        // .add_systems(
-        //     PostUpdate,
-        //     show_ui_system
-        //         .before(EguiPostUpdateSet::ProcessOutput)
-        //         .before(bevy_egui::end_pass_system)
-        //         .before(bevy::transform::TransformSystem::TransformPropagate),
-        // )
-        // .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
-        .add_reactor(broadcast::<ui::SelectButton>(), ui::handle_button_select)
-        .add_reactor(broadcast::<ui::DeselectButton>(), ui::handle_button_deselect)
-        .load("main.cob")
+        .add_systems(
+            PostUpdate,
+            show_ui_system
+                .before(EguiPostUpdateSet::ProcessOutput)
+                .before(bevy_egui::end_pass_system)
+                .before(TransformSystem::TransformPropagate),
+        )
+        .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
+        .register_type::<Option<Handle<Image>>>()
+        .register_type::<AlphaMode>()
         .run();
 }
 
-// fn show_ui_system(world: &mut World) {
-//     let Ok(egui_context) = world
-//         .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
-//         .get_single(world)
-//     else {
-//         return;
-//     };
-//     let mut egui_context = egui_context.clone();
-//
-//     world.resource_scope::<UiState, _>(|world, mut ui_state| {
-//         ui_state.ui(world, egui_context.get_mut())
-//     });
-// }
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut game_state: ResMut<GameState>,
+) {
+    setup_game_state(&mut game_state);
+    setup_camera(&mut commands);
+    setup_lighting(&mut commands);
+    setup_play_field(&mut commands, &mut meshes, &mut materials);
+}

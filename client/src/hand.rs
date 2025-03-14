@@ -14,13 +14,12 @@ use bevy_cobweb::prelude::ReactRes;
 use fontdue::Font;
 use crate::state::GameState;
 use crate::texture::uv_debug_texture;
-use crate::ui::{GAME_LAYER, UI_LAYER};
 
 #[derive(Resource, Clone, Debug)]
 pub(crate) struct HandLayoutParams {
-    count: usize,
+    pub(crate) count: usize,
     ideal_spacing: f32,
-    spread_width: f32,
+    pub(crate) spread_width: f32,
     curve_height: f32,
     base_height: f32,
     base_z: f32,
@@ -101,25 +100,6 @@ pub fn setup_hand(
         },
         Transform::from_xyz(8.0, 16.0, 8.0),
     ));
-
-    commands.spawn((
-        Camera3d::default(),
-        GAME_LAYER,
-        Transform::from_xyz(0.0, 3.0, 20.0).looking_at(Vec3::new(0., 0., 10.), Vec3::Y),
-    ));
-
-    #[cfg(not(target_arch = "wasm32"))]
-    commands.spawn((
-        // Text::new("Press space to toggle wireframes"),
-        UI_LAYER,
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(12.0),
-            left: Val::Px(12.0),
-            ..default()
-        },
-        Name::new("Toggle Text")
-    ));
 }
 
 fn spawn_card(
@@ -161,7 +141,6 @@ fn spawn_card(
             GlobalTransform::default(),
             Card { index },
             Visibility::default(),
-            GAME_LAYER,
             Name::new(card_name),
         ))
         .with_children(|parent| {
@@ -170,7 +149,6 @@ fn spawn_card(
                 Mesh3d(card_mesh.clone()),
                 MeshMaterial3d(debug_material.clone()),
                 Transform::default(),
-                GAME_LAYER,
             ));
 
             // Image section
@@ -179,7 +157,6 @@ fn spawn_card(
                 MeshMaterial3d(image_material.clone()),
                 Transform::from_xyz(0.0, 0.1, card_size.z + image_size.z/2.0),
                 CardImage,
-                GAME_LAYER,
             ));
 
             // Text section
@@ -188,7 +165,6 @@ fn spawn_card(
                 MeshMaterial3d(text_material),
                 Transform::from_xyz(0.0, 1.2, card_size.z + text_size.z/2.0 + 0.005),
                 CardText,
-                GAME_LAYER,
             ));
         });
 }
@@ -270,8 +246,8 @@ pub(crate) fn update_card_count(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if params.count != game_state.hand.len(){
-        params.count = game_state.hand.len();
+    if params.count != game_state.player_hand.len(){
+        params.count = game_state.player_hand.len();
     }
 
     if params.is_changed() {
@@ -293,8 +269,8 @@ pub(crate) fn update_card_count(
             let font = Font::from_bytes(font_data as &[u8], fontdue::FontSettings::default()).unwrap();
 
             // Spawn new cards
-            for i in 0..game_state.hand.len() {
-                let c = game_state.hand[i].clone();
+            for i in 0..game_state.player_hand.len() {
+                let c = game_state.player_hand[i].clone();
                 spawn_card(
                     &mut commands,
                     &mut meshes,
